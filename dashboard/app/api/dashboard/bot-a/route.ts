@@ -9,9 +9,15 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const demoMode = searchParams.get('demo') === 'true' || process.env.DEMO_MODE === 'true';
+    const demoMode =
+      searchParams.get('demo') === 'true' ||
+      process.env.DEMO_MODE === 'true';
+
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    // ───────────────────────────────
+    // DEMO MODE
+    // ───────────────────────────────
     if (demoMode) {
       const mockTrades = [
         {
@@ -20,7 +26,7 @@ export async function GET(request: NextRequest) {
           size: 0.005,
           entry_price: 45000,
           exit_price: 45200,
-          pnl_usd: 10.50,
+          pnl_usd: 10.5,
           created_at: new Date(Date.now() - 3600000).toISOString(),
         },
         {
@@ -38,15 +44,15 @@ export async function GET(request: NextRequest) {
           size: 0.003,
           entry_price: 44800,
           exit_price: 44900,
-          pnl_usd: 3.20,
+          pnl_usd: 3.2,
           created_at: new Date(Date.now() - 10800000).toISOString(),
         },
       ];
 
-      const mockData = {
+      return NextResponse.json({
         current_balance: 245.75,
         cycle_number: 2,
-        cycle_target: 230.00,
+        cycle_target: 230.0,
         cycle_progress: 106.7,
         risk_mode: 'High',
         today_trades: 3,
@@ -58,43 +64,29 @@ export async function GET(request: NextRequest) {
           risk_level: 'High',
         },
         last_updated: new Date().toISOString(),
-      };
-
-      return NextResponse.json(mockData);
+      });
     }
 
-    // REAL DATA MODE
-    const [
-      botState,
-      trades,
-      stats,
-      sentiment
-    ] = await Promise.all([
+    // ───────────────────────────────
+    // LIVE MODE — DATABASE
+    // ───────────────────────────────
+    const [botState, trades, stats, sentiment] = await Promise.all([
       getBotState(),
       getBotATrades(limit),
       getBotAStats(),
-      getLatestSentiment()
+      getLatestSentiment(),
     ]);
 
-    const cycleProgress = (parseFloat(botState.botA_virtual_usd) / parseFloat(botState.botA_cycle_target)) * 100;
+    const cycleProgress =
+      (parseFloat(botState.botA_virtual_usd) /
+        parseFloat(botState.botA_cycle_target)) *
+      100;
+
     const riskMode = getRiskMode(parseFloat(sentiment.mcs));
 
+    // Format trades safely
     const formattedTrades = trades.map((trade: any) => ({
       pair: trade.pair,
       side: trade.side,
       size: parseFloat(trade.size) || 0,
-      entry_price: parseFloat(trade.entry_price) || 0,
-      exit_price: parseFloat(trade.exit_price) || 0,
-      pnl_usd: parseFloat(trade.pnl_usd) || 0,
-      created_at: trade.created_at,
-    }));
-
-    const data = {
-      current_balance: parseFloat(botState.botA_virtual_usd) || 0,
-      cycle_number: botState.botA_cycle_number || 1,
-      cycle_target: parseFloat(botState.botA_cycle_target) || 200,
-      cycle_progress: cycleProgress,
-      risk_mode: riskMode,
-      today_trades: parseInt(stats.total_trades) || 0,
-      win_rate: parseFloat(stats.win_rate) || 0,
-      t
+      entry_price: parseFloat(trade.entry_price) ||
