@@ -1,8 +1,9 @@
-import { logger, performanceLogger } from '../utils/logger';
+// import { logger, performanceLogger } from '../utils/logger'; // Unused imports
+import { performanceLogger } from '../utils/logger';
 import { sentimentService } from './sentimentService';
-import { krakenService } from './krakenService';
+// import { krakenService } from './krakenService'; // Unused import
 import { query } from '../db/db';
-import { calculatePositionSize, calculateStopLossPrice, calculateRiskRewardRatio, clamp } from '../utils/math';
+import { calculatePositionSize, calculateStopLossPrice, calculateRiskRewardRatio /*, clamp */ } from '../utils/math';
 
 export interface RiskAssessment {
   maxRiskPerTrade: number; // 0-1 (percentage)

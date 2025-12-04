@@ -10,6 +10,12 @@ const nextConfig = {
   reactStrictMode: true,
   // Optimize for production
   swcMinify: true,
+  experimental: {
+    // SWC compilation settings for Railway
+    swcTraceProfiling: false,
+  },
+  // Ensure SWC doesn't try to auto-patch
+  poweredByHeader: false,
   // Enable image optimization
   images: {
     domains: [],

@@ -49,27 +49,31 @@ const transports: winston.transport[] = [
 ];
 
 // File transports (only in production or when LOG_TO_FILE is true)
-if (process.env.NODE_ENV === 'production' || process.env.LOG_TO_FILE === 'true') {
-  // Error log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: fileFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    })
-  );
+if ((process.env.NODE_ENV === 'production' || process.env.LOG_TO_FILE === 'true') && process.env.VERCEL !== 'true') {
+  try {
+    // Error log file
+    transports.push(
+      new winston.transports.File({
+        filename: 'logs/error.log',
+        level: 'error',
+        format: fileFormat,
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      })
+    );
 
-  // Combined log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: fileFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    })
-  );
+    // Combined log file
+    transports.push(
+      new winston.transports.File({
+        filename: 'logs/combined.log',
+        format: fileFormat,
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      })
+    );
+  } catch (error) {
+    console.warn('File logging disabled:', error);
+  }
 }
 
 // Create the logger instance
@@ -81,13 +85,19 @@ export const logger = winston.createLogger({
   exitOnError: false,
 });
 
-// Create logs directory if it doesn't exist
+// Create logs directory if it doesn't exist (only if not on Vercel)
 import fs from 'fs';
 import path from 'path';
 
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+if (process.env.VERCEL !== 'true') {
+  try {
+    const logsDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+  } catch (error) {
+    console.warn('Could not create logs directory:', error);
+  }
 }
 
 // Utility methods for specific use cases
