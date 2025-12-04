@@ -9,15 +9,9 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const demoMode =
-      searchParams.get('demo') === 'true' ||
-      process.env.DEMO_MODE === 'true';
-
+    const demoMode = searchParams.get('demo') === 'true' || process.env.DEMO_MODE === 'true';
     const limit = parseInt(searchParams.get('limit') || '10');
 
-    // ───────────────────────────────
-    // DEMO MODE
-    // ───────────────────────────────
     if (demoMode) {
       const mockTrades = [
         {
@@ -26,7 +20,7 @@ export async function GET(request: NextRequest) {
           size: 0.005,
           entry_price: 45000,
           exit_price: 45200,
-          pnl_usd: 10.5,
+          pnl_usd: 10.50,
           created_at: new Date(Date.now() - 3600000).toISOString(),
         },
         {
@@ -44,7 +38,7 @@ export async function GET(request: NextRequest) {
           size: 0.003,
           entry_price: 44800,
           exit_price: 44900,
-          pnl_usd: 3.2,
+          pnl_usd: 3.20,
           created_at: new Date(Date.now() - 10800000).toISOString(),
         },
       ];
@@ -52,62 +46,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         current_balance: 245.75,
         cycle_number: 2,
-        cycle_target: 230.0,
+        cycle_target: 230,
         cycle_progress: 106.7,
-        risk_mode: 'High',
+        risk_mode: "High",
         today_trades: 3,
         win_rate: 0.67,
         total_pnl_today: 25.45,
         trades: mockTrades,
         sentiment: {
           mcs: 0.65,
-          risk_level: 'High',
+          risk_level: "High",
         },
         last_updated: new Date().toISOString(),
       });
     }
 
-    // ───────────────────────────────
-    // LIVE MODE — DATABASE
-    // ───────────────────────────────
-    const [botState, trades, stats, sentiment] = await Promise.all([
+    // REAL MODE
+    const [
+      botState,
+      trades,
+      stats,
+      sentiment
+    ] = await Promise.all([
       getBotState(),
       getBotATrades(limit),
       getBotAStats(),
-      getLatestSentiment(),
+      getLatestSentiment()
     ]);
 
     const cycleProgress =
-      (parseFloat(botState.botA_virtual_usd) /
-        parseFloat(botState.botA_cycle_target)) *
-      100;
+      (parseFloat(botState.botA_virtual_usd) / parseFloat(botState.botA_cycle_target)) * 100;
 
     const riskMode = getRiskMode(parseFloat(sentiment.mcs));
 
-    // Format trades safely
-    const formattedTrades = trades.map((trade: any) => ({
-      pair: trade.pair,
-      side: trade.side,
-      size: parseFloat(trade.size) || 0,
-      entry_price: parseFloat(trade.entry_price) || 0,
-      exit_price: parseFloat(trade.exit_price) || 0,
-      pnl_usd: parseFloat(trade.pnl_usd) || 0,
-      created_at: trade.created_at,
-    }));
-
-    // Final API return
     const data = {
       current_balance: parseFloat(botState.botA_virtual_usd) || 0,
       cycle_number: botState.botA_cycle_number || 1,
       cycle_target: parseFloat(botState.botA_cycle_target) || 200,
       cycle_progress: cycleProgress,
       risk_mode: riskMode,
-
       today_trades: parseInt(stats.total_trades) || 0,
       win_rate: parseFloat(stats.win_rate) || 0,
       total_pnl_today: parseFloat(stats.total_pnl) || 0,
 
-      trades: formattedTrades,
+      // ✅ FIXED TRADES BLOCK
+      trades: trades.map((trade: any) => ({
+        pair: trade.pair,
+        side: trade.side,
+        size: parseFloat(trade.size) || 0,
+        entry_price: parseFloat(trade.entry_price) || 0,
+        exit_price: parseFloat(trade.exit_price) || 0,
+        pnl_usd: parseFloat(trade.pnl_usd) || 0,
+        created_at: trade.created_at,
+      })),
 
       sentiment: {
         mcs: parseFloat(sentiment.mcs) || 0.5,
@@ -118,17 +109,18 @@ export async function GET(request: NextRequest) {
     };
 
     return NextResponse.json(data);
+
   } catch (error) {
-    console.error('Error fetching Bot A data:', error);
+    console.error("Error fetching Bot A data:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch Bot A data' },
+      { error: "Failed to fetch Bot A data" },
       { status: 500 }
     );
   }
 }
 
 function getRiskMode(mcs: number): string {
-  if (mcs >= 0.7) return 'High';
-  if (mcs >= 0.4) return 'Medium';
-  return 'Low';
+  if (mcs >= 0.7) return "High";
+  if (mcs >= 0.4) return "Medium";
+  return "Low";
 }
