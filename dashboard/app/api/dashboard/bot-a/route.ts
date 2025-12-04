@@ -89,4 +89,46 @@ export async function GET(request: NextRequest) {
       pair: trade.pair,
       side: trade.side,
       size: parseFloat(trade.size) || 0,
-      entry_price: parseFloat(trade.entry_price) ||
+      entry_price: parseFloat(trade.entry_price) || 0,
+      exit_price: parseFloat(trade.exit_price) || 0,
+      pnl_usd: parseFloat(trade.pnl_usd) || 0,
+      created_at: trade.created_at,
+    }));
+
+    // Final API return
+    const data = {
+      current_balance: parseFloat(botState.botA_virtual_usd) || 0,
+      cycle_number: botState.botA_cycle_number || 1,
+      cycle_target: parseFloat(botState.botA_cycle_target) || 200,
+      cycle_progress: cycleProgress,
+      risk_mode: riskMode,
+
+      today_trades: parseInt(stats.total_trades) || 0,
+      win_rate: parseFloat(stats.win_rate) || 0,
+      total_pnl_today: parseFloat(stats.total_pnl) || 0,
+
+      trades: formattedTrades,
+
+      sentiment: {
+        mcs: parseFloat(sentiment.mcs) || 0.5,
+        risk_level: riskMode,
+      },
+
+      last_updated: new Date().toISOString(),
+    };
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error fetching Bot A data:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch Bot A data' },
+      { status: 500 }
+    );
+  }
+}
+
+function getRiskMode(mcs: number): string {
+  if (mcs >= 0.7) return 'High';
+  if (mcs >= 0.4) return 'Medium';
+  return 'Low';
+}
