@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
 
     if (demoMode) {
-      // Return mock data for Bot A
       const mockTrades = [
         {
           pair: 'BTC/USD',
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
           entry_price: 45000,
           exit_price: 45200,
           pnl_usd: 10.50,
-          created_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+          created_at: new Date(Date.now() - 3600000).toISOString(),
         },
         {
           pair: 'ETH/USD',
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
           entry_price: 3000,
           exit_price: 3025,
           pnl_usd: 12.75,
-          created_at: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
+          created_at: new Date(Date.now() - 7200000).toISOString(),
         },
         {
           pair: 'BTC/USD',
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
           entry_price: 44800,
           exit_price: 44900,
           pnl_usd: 3.20,
-          created_at: new Date(Date.now() - 10800000).toISOString(), // 3 hours ago
+          created_at: new Date(Date.now() - 10800000).toISOString(),
         },
       ];
 
@@ -64,7 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(mockData);
     }
 
-    // Get real data from database
+    // REAL DATA MODE
     const [
       botState,
       trades,
@@ -80,6 +79,16 @@ export async function GET(request: NextRequest) {
     const cycleProgress = (parseFloat(botState.botA_virtual_usd) / parseFloat(botState.botA_cycle_target)) * 100;
     const riskMode = getRiskMode(parseFloat(sentiment.mcs));
 
+    const formattedTrades = trades.map((trade: any) => ({
+      pair: trade.pair,
+      side: trade.side,
+      size: parseFloat(trade.size) || 0,
+      entry_price: parseFloat(trade.entry_price) || 0,
+      exit_price: parseFloat(trade.exit_price) || 0,
+      pnl_usd: parseFloat(trade.pnl_usd) || 0,
+      created_at: trade.created_at,
+    }));
+
     const data = {
       current_balance: parseFloat(botState.botA_virtual_usd) || 0,
       cycle_number: botState.botA_cycle_number || 1,
@@ -88,34 +97,4 @@ export async function GET(request: NextRequest) {
       risk_mode: riskMode,
       today_trades: parseInt(stats.total_trades) || 0,
       win_rate: parseFloat(stats.win_rate) || 0,
-      total_pnl_today: parseFloat(stats.total_pnl) || 0,
-      trades.map((trade: any) => {        pair: trade.pair,
-        side: trade.side,
-        size: parseFloat(trade.size) || 0,
-        entry_price: parseFloat(trade.entry_price) || 0,
-        exit_price: parseFloat(trade.exit_price) || 0,
-        pnl_usd: parseFloat(trade.pnl_usd) || 0,
-        created_at: trade.created_at,
-      })),
-      sentiment: {
-        mcs: parseFloat(sentiment.mcs) || 0.5,
-        risk_level: riskMode,
-      },
-      last_updated: new Date().toISOString(),
-    };
-
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('Error fetching Bot A data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch Bot A data' },
-      { status: 500 }
-    );
-  }
-}
-
-function getRiskMode(mcs: number): string {
-  if (mcs >= 0.7) return 'High';
-  if (mcs >= 0.4) return 'Medium';
-  return 'Low';
-}
+      t
