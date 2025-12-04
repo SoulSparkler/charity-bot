@@ -89,8 +89,7 @@ export async function GET(request: NextRequest) {
       today_trades: parseInt(stats.total_trades) || 0,
       win_rate: parseFloat(stats.win_rate) || 0,
       total_pnl_today: parseFloat(stats.total_pnl) || 0,
-      trades: trades.map(trade => ({
-        pair: trade.pair,
+      trades.map((trade: any) => {        pair: trade.pair,
         side: trade.side,
         size: parseFloat(trade.size) || 0,
         entry_price: parseFloat(trade.entry_price) || 0,
