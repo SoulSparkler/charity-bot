@@ -294,7 +294,15 @@ class KrakenService {
    * Place an order
    */
   async placeSpotOrder(orderRequest: PlaceOrderRequest): Promise<KrakenOrder> {
-    if (this.mockMode) {
+    const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
+    
+    if (this.mockMode || !allowRealTrading) {
+      if (this.mockMode) {
+        krakenLogger.info('🧪 Returning mock order result');
+      } else {
+        krakenLogger.warn('🚫 Real trading disabled - set ALLOW_REAL_TRADING=true to enable');
+      }
+      
       return {
         orderId: `order_${Date.now()}`,
         pair: orderRequest.pair,
@@ -309,9 +317,54 @@ class KrakenService {
       };
     }
 
-    // Simplified for demo
-    krakenLogger.warn('Real order placement not implemented in demo mode');
-    throw new Error('Real trading not implemented');
+    try {
+      krakenLogger.warn('⚠️ ATTEMPTING REAL ORDER PLACEMENT - This will use real funds!');
+      
+      // Additional safety check - require explicit confirmation
+      const confirmationRequired = process.env.TRADE_CONFIRMATION_REQUIRED === 'true';
+      if (confirmationRequired) {
+        krakenLogger.error('🚫 Real trading requires confirmation - rejecting order');
+        throw new Error('Real trading requires explicit confirmation');
+      }
+
+      const orderData: any = {
+        pair: orderRequest.pair.replace('/', ''),
+        type: orderRequest.side.toLowerCase(),
+        ordertype: orderRequest.type.toLowerCase(),
+        volume: orderRequest.size.toString(),
+      };
+
+      if (orderRequest.price) {
+        orderData.price = orderRequest.price.toString();
+      }
+
+      const response = await this.httpClient.post('/0/private/AddOrder', orderData);
+      
+      if (response.data.error && response.data.error.length > 0) {
+        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+      }
+
+      const orderInfo = response.data.result;
+      const order: KrakenOrder = {
+        orderId: orderInfo.txid[0],
+        pair: orderRequest.pair,
+        side: orderRequest.side,
+        type: orderRequest.type,
+        size: orderRequest.size,
+        price: orderRequest.price || null,
+        status: 'open',
+        createdAt: new Date(),
+        filledSize: 0,
+        remainingSize: orderRequest.size,
+      };
+
+      krakenLogger.trade('REAL', orderRequest.pair, orderRequest.side, orderRequest.size, orderRequest.price || 0, 0);
+      return order;
+      
+    } catch (error) {
+      krakenLogger.error('Failed to place real order', error as Error);
+      throw error;
+    }
   }
 
   /**
@@ -321,17 +374,50 @@ class KrakenService {
     if (this.mockMode) {
       return {};
     }
-    return {};
+
+    try {
+      const response = await this.httpClient.post('/0/private/OpenOrders');
+      
+      if (response.data.error && response.data.error.length > 0) {
+        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+      }
+
+      return response.data.result.open || {};
+      
+    } catch (error) {
+      krakenLogger.error('Failed to fetch open orders', error as Error);
+      return {};
+    }
   }
 
   /**
    * Cancel all orders
    */
   async cancelAllOrders(): Promise<{ count: number }> {
-    if (this.mockMode) {
+    const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
+    
+    if (this.mockMode || !allowRealTrading) {
       return { count: 0 };
     }
-    return { count: 0 };
+
+    try {
+      krakenLogger.warn('⚠️ Attempting to cancel all orders on Kraken...');
+      
+      const response = await this.httpClient.post('/0/private/CancelAll');
+      
+      if (response.data.error && response.data.error.length > 0) {
+        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+      }
+
+      const count = response.data.result.count || 0;
+      krakenLogger.info(`Cancelled ${count} orders on Kraken`);
+      
+      return { count };
+      
+    } catch (error) {
+      krakenLogger.error('Failed to cancel all orders', error as Error);
+      throw error;
+    }
   }
 
   /**
@@ -358,8 +444,32 @@ class KrakenService {
       return mockData;
     }
 
-    // Simplified for demo
-    return [];
+    try {
+      const krakenPair = pair.replace('/', '');
+      const response = await this.httpClient.get(`/0/public/OHLC?pair=${krakenPair}&interval=${interval}`);
+      
+      if (response.data.error && response.data.error.length > 0) {
+        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+      }
+
+      const ohlcData = response.data.result[krakenPair] || [];
+      
+      // Convert to expected format: [timestamp, open, high, low, close, volume]
+      return ohlcData.map((candle: any) => [
+        candle[0] * 1000, // Convert to milliseconds
+        parseFloat(candle[1]), // Open
+        parseFloat(candle[2]), // High
+        parseFloat(candle[3]), // Low
+        parseFloat(candle[4]), // Close
+        parseFloat(candle[6])  // Volume
+      ]);
+      
+    } catch (error) {
+      krakenLogger.error('Failed to fetch OHLC data', error as Error);
+      
+      // Return empty array as fallback
+      return [];
+    }
   }
 
   /**
@@ -370,13 +480,101 @@ class KrakenService {
   }
 
   /**
+   * Test API connectivity - only for read operations
+   */
+  async testConnection(): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      if (this.mockMode) {
+        return {
+          success: true,
+          message: 'Mock mode - API connection test successful',
+        };
+      }
+
+      if (!this.apiKey || !this.apiSecret) {
+        return {
+          success: false,
+          message: 'API credentials not configured',
+        };
+      }
+
+      // Test with public endpoint first
+      krakenLogger.info('Testing Kraken API connection...');
+      const response = await this.httpClient.get('/0/public/SystemStatus');
+      
+      if (response.data.error && response.data.error.length > 0) {
+        return {
+          success: false,
+          message: `API error: ${response.data.error.join(', ')}`,
+        };
+      }
+
+      const systemStatus = response.data.result;
+      
+      return {
+        success: true,
+        message: `API connection successful - Status: ${systemStatus.status}`,
+        data: systemStatus,
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        message: `Connection failed: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  /**
+   * Test balance retrieval - safe read-only operation
+   */
+  async testBalanceAccess(): Promise<{ success: boolean; message: string; balance?: KrakenBalance }> {
+    try {
+      const balances = await this.getBalances();
+      
+      if (Object.keys(balances).length > 0) {
+        return {
+          success: true,
+          message: `Balance access successful - Found ${Object.keys(balances).length} currencies`,
+          balance: balances,
+        };
+      } else {
+        return {
+          success: true,
+          message: 'Balance access successful - Account appears to be empty',
+          balance: balances,
+        };
+      }
+      
+    } catch (error) {
+      return {
+        success: false,
+        message: `Balance access failed: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  /**
    * Get service status
    */
-  getStatus(): { status: string; mode: string; apiKeyConfigured: boolean } {
+  getStatus(): { 
+    status: string; 
+    mode: string; 
+    apiKeyConfigured: boolean; 
+    apiSecretConfigured: boolean;
+    realTradingEnabled: boolean;
+    tradeConfirmationRequired: boolean;
+  } {
+    const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
+    const tradeConfirmationRequired = process.env.TRADE_CONFIRMATION_REQUIRED === 'true';
+    
     return {
       status: this.mockMode ? 'mock' : 'live',
-      mode: this.mockMode ? 'testing' : 'production',
+      mode: this.mockMode ? 'testing' : (allowRealTrading ? 'production' : 'read-only'),
       apiKeyConfigured: !!this.apiKey,
+      apiSecretConfigured: !!this.apiSecret,
+      realTradingEnabled: allowRealTrading && !this.mockMode,
+      tradeConfirmationRequired,
     };
   }
 }

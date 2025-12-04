@@ -13,6 +13,7 @@
     "watch": "ts-node --watch src/worker.ts",
     "watch:server": "ts-node --watch src/server.ts",
     "test": "echo \"Use USE_MOCK_KRAKEN=true for testing without real money\" && exit 0",
+    "test:kraken": "npm run build && node test-kraken-api.js",
     "lint": "eslint src --ext .ts",
     "db:migrate": "psql $DATABASE_URL -f src/db/schema.sql"
   },
