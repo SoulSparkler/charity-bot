@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -65,7 +67,13 @@ export async function GET(request: NextRequest) {
         last_updated: new Date().toISOString(),
       };
 
-      return NextResponse.json(mockData);
+      return NextResponse.json(mockData, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
     }
 
     // PRODUCTION MODE: Proxy to Railway backend API
@@ -102,7 +110,13 @@ export async function GET(request: NextRequest) {
         last_updated: new Date().toISOString(),
       };
 
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
 
     } catch (apiError) {
       console.error('Railway API error:', apiError);
@@ -131,13 +145,26 @@ export async function GET(request: NextRequest) {
         },
         last_updated: new Date().toISOString(),
         error: 'Using fallback data - Railway API unavailable'
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       });
     }
   } catch (error) {
     console.error('Error fetching Bot B data:', error);
     return NextResponse.json(
       { error: 'Failed to fetch Bot B data' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 }

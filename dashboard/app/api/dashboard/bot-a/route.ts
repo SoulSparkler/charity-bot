@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -54,6 +56,12 @@ export async function GET(request: NextRequest) {
           risk_level: "High",
         },
         last_updated: new Date().toISOString(),
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       });
     }
 
@@ -91,7 +99,13 @@ export async function GET(request: NextRequest) {
         last_updated: new Date().toISOString(),
       };
 
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
 
     } catch (apiError) {
       console.error('Railway API error:', apiError);
@@ -112,6 +126,12 @@ export async function GET(request: NextRequest) {
         },
         last_updated: new Date().toISOString(),
         error: 'Using fallback data - Railway API unavailable'
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
       });
     }
 
@@ -119,7 +139,14 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching Bot A data:", error);
     return NextResponse.json(
       { error: "Failed to fetch Bot A data" },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 }
