@@ -1,48 +1,39 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
-// Import mock database functions
-import { mockQuery, testConnection as testMockConnection } from './mock-db';
-
 dotenv.config();
 
-// Database configuration - can be overridden by environment variables
+// Database configuration - from Railway or .env
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'charity_bot',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 };
 
-// Determine if we should use mock database
-const useMockDb = process.env.USE_MOCK_DB === 'true' || process.env.DEMO_MODE === 'true';
+// No mock DB support anymore — only PostgreSQL
 let pool: Pool | null = null;
 
-// Create connection pool if not using mock
-if (!useMockDb) {
-  try {
-    pool = new Pool(dbConfig);
-  } catch (error) {
-    console.warn('⚠️  Failed to create PostgreSQL connection pool, falling back to mock database:', error);
-  }
+try {
+  pool = new Pool(dbConfig);
+  console.log('📦 PostgreSQL pool created');
+} catch (error) {
+  console.error('❌ Failed to create PostgreSQL pool:', error);
+  pool = null;
 }
 
-// Test database connection
+// Test DB connection
 export async function testConnection(): Promise<boolean> {
-  if (useMockDb) {
-    return await testMockConnection();
-  }
-  
   if (!pool) {
-    console.log('⚠️  Using mock database - PostgreSQL connection pool not available');
-    return await testMockConnection();
+    console.error('❌ DB pool is not initialized');
+    return false;
   }
-  
+
   try {
     const client = await pool.connect();
     await client.query('SELECT NOW()');
@@ -51,33 +42,29 @@ export async function testConnection(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error('❌ PostgreSQL database connection failed:', error);
-    console.log('⚠️  Falling back to mock database');
-    return await testMockConnection();
+    return false;
   }
 }
 
-// Execute query with error handling
+// Execute SQL query
 export async function query(text: string, params?: any[]): Promise<any> {
-  const start = Date.now();
-  
-  if (useMockDb || !pool) {
-    console.log(`🔄 Mock DB Query:`, text.substring(0, 50) + '...');
-    return await mockQuery(text, params);
+  if (!pool) {
+    throw new Error('Database connection pool is not available');
   }
-  
+
   try {
     const res = await pool.query(text, params);
-    const duration = Date.now() - start;
-    console.log('Executed PostgreSQL query:', { text: text.substring(0, 50) + '...', duration, rows: res.rowCount });
     return res;
   } catch (error) {
-    console.error('PostgreSQL query error:', error);
-    console.log('⚠️  Falling back to mock database');
-    return await mockQuery(text, params);
+    console.error('❌ PostgreSQL query error:', error);
+    throw error;
   }
 }
 
-// Get bot state data
+/* ================================
+   REAL DB OPERATIONS BELOW  
+   ================================ */
+
 export async function getBotState() {
   const result = await query(`
     SELECT 
@@ -91,18 +78,10 @@ export async function getBotState() {
     ORDER BY created_at DESC 
     LIMIT 1
   `);
-  
-  return result.rows[0] || {
-    botA_virtual_usd: 230,
-    botB_virtual_usd: 0,
-    botA_cycle_number: 1,
-    botA_cycle_target: 200,
-    last_reset: new Date(),
-    updated_at: new Date(),
-  };
+
+  return result.rows[0] || null;
 }
 
-// Get latest sentiment data
 export async function getLatestSentiment() {
   const result = await query(`
     SELECT 
@@ -114,16 +93,10 @@ export async function getLatestSentiment() {
     ORDER BY created_at DESC 
     LIMIT 1
   `);
-  
-  return result.rows[0] || {
-    fgi_value: 50,
-    trend_score: 0,
-    mcs: 0.5,
-    created_at: new Date(),
-  };
+
+  return result.rows[0] || null;
 }
 
-// Get sentiment history (last 30 entries)
 export async function getSentimentHistory(limit: number = 30) {
   const result = await query(`
     SELECT 
@@ -134,11 +107,10 @@ export async function getSentimentHistory(limit: number = 30) {
     ORDER BY created_at DESC 
     LIMIT $1
   `, [limit]);
-  
+
   return result.rows || [];
 }
 
-// Get Bot A trades
 export async function getBotATrades(limit: number = 10) {
   const result = await query(`
     SELECT 
@@ -154,11 +126,10 @@ export async function getBotATrades(limit: number = 10) {
     ORDER BY created_at DESC 
     LIMIT $1
   `, [limit]);
-  
+
   return result.rows || [];
 }
 
-// Get Bot B trades
 export async function getBotBTrades(limit: number = 10) {
   const result = await query(`
     SELECT 
@@ -174,11 +145,10 @@ export async function getBotBTrades(limit: number = 10) {
     ORDER BY created_at DESC 
     LIMIT $1
   `, [limit]);
-  
+
   return result.rows || [];
 }
 
-// Get monthly reports
 export async function getMonthlyReports(limit: number = 12) {
   const result = await query(`
     SELECT 
@@ -191,11 +161,10 @@ export async function getMonthlyReports(limit: number = 12) {
     ORDER BY created_at DESC 
     LIMIT $1
   `, [limit]);
-  
+
   return result.rows || [];
 }
 
-// Get open trades count
 export async function getOpenTradesCount() {
   const result = await query(`
     SELECT COUNT(*) as count
@@ -203,11 +172,10 @@ export async function getOpenTradesCount() {
     WHERE created_at >= CURRENT_DATE
       AND (exit_price IS NULL OR exit_price = 0)
   `);
-  
+
   return parseInt(result.rows[0].count) || 0;
 }
 
-// Get Bot A statistics
 export async function getBotAStats() {
   const result = await query(`
     SELECT 
@@ -219,16 +187,10 @@ export async function getBotAStats() {
     WHERE bot = 'A' 
       AND created_at >= CURRENT_DATE
   `);
-  
-  return result.rows[0] || {
-    total_trades: 0,
-    win_rate: 0,
-    total_pnl: 0,
-    avg_trade_size: 0,
-  };
+
+  return result.rows[0] || null;
 }
 
-// Get Bot B statistics
 export async function getBotBStats() {
   const result = await query(`
     SELECT 
@@ -237,19 +199,13 @@ export async function getBotBStats() {
       SUM(pnl_usd) as total_pnl,
       AVG(size * entry_price) as avg_trade_size
     FROM trade_logs 
-    WHERE bot = 'B' 
+    WHERE bot = 'B'
       AND created_at >= CURRENT_DATE
   `);
-  
-  return result.rows[0] || {
-    total_trades: 0,
-    win_rate: 0,
-    total_pnl: 0,
-    avg_trade_size: 0,
-  };
+
+  return result.rows[0] || null;
 }
 
-// Get month-to-date P&L for Bot B
 export async function getBotBMonthToDatePnL() {
   const result = await query(`
     SELECT SUM(pnl_usd) as mtd_pnl
@@ -257,26 +213,22 @@ export async function getBotBMonthToDatePnL() {
     WHERE bot = 'B'
       AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
   `);
-  
+
   return parseFloat(result.rows[0].mtd_pnl) || 0;
 }
 
-// Close database connections
+// Close DB connection
 export async function closeConnection(): Promise<void> {
-  if (useMockDb || !pool) {
-    console.log('⚠️  Mock database - no connections to close');
-    return;
-  }
-  
+  if (!pool) return;
+
   try {
     await pool.end();
-    console.log('✅ PostgreSQL database connection closed');
+    console.log('🔌 PostgreSQL pool closed');
   } catch (error) {
-    console.error('❌ Error closing PostgreSQL database connection:', error);
+    console.error('❌ Error closing PostgreSQL pool:', error);
   }
 }
 
-// Export database type info
-export function getDatabaseType(): 'postgresql' | 'mock' {
-  return (useMockDb || !pool) ? 'mock' : 'postgresql';
+export function getDatabaseType(): 'postgresql' {
+  return 'postgresql';
 }
