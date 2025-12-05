@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    // appDir is now stable in Next.js 14
-  },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY || 'dashboard-key',
   },
@@ -11,6 +8,8 @@ const nextConfig = {
   // Optimize for production
   swcMinify: true,
   experimental: {
+    // Allow imports from the monorepo root (used by API routes)
+    externalDir: true,
     // SWC compilation settings for Railway
     swcTraceProfiling: false,
   },
