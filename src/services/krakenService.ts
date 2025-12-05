@@ -257,8 +257,16 @@ class KrakenService {
       
       for (const [krakenPair, data] of Object.entries(tickerData)) {
         const pairInfo = data as any;
-        result[krakenPair] = {
-          pair: krakenPair,
+        
+        // Map Kraken pair names to our format
+        let ourPairName = krakenPair;
+        if (krakenPair === 'XXBTZUSD') ourPairName = 'BTCUSD';
+        if (krakenPair === 'XETHZUSD') ourPairName = 'ETHUSD';
+        if (krakenPair === 'BTCUSD') ourPairName = 'BTCUSD';
+        if (krakenPair === 'ETHUSD') ourPairName = 'ETHUSD';
+        
+        result[ourPairName] = {
+          pair: ourPairName,
           price: pairInfo.c[0], // Last trade price
           volume: pairInfo.v[1], // Today's volume
           timestamp: Date.now(),
