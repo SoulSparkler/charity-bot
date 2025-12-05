@@ -1,21 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
+interface KrakenStatus {
+  status: string;
+  mode: string;
+  apiKeyConfigured: boolean;
+  apiSecretConfigured: boolean;
+  realTradingEnabled: boolean;
+  tradeConfirmationRequired: boolean;
+  mockMode?: boolean;
+}
+
+interface KrakenBalanceTests {
+  connection: {
+    success: boolean;
+    message: string;
+    data?: any;
+  };
+  balance: {
+    success: boolean;
+    message: string;
+    balance: Record<string, string>;
+  };
+  status: KrakenStatus;
+}
+
+interface KrakenResponse {
+  success: boolean;
+  tests: KrakenBalanceTests;
+  summary?: any;
+  [key: string]: any;
+}
 
 interface DashboardState {
-  botA_virtual_usd: number;
-  botB_virtual_usd: number;
-  cycle_number: number;
-  cycle_target: number;
-  mcs: number;
-  fgi: number;
-  open_trades: number;
-  botA_today_trades: number;
-  botB_today_trades: number;
-  botA_win_rate: number;
-  botB_win_rate: number;
-  botB_mtd_pnl: number;
+  success: boolean;
   last_updated: string;
+  kraken: KrakenResponse;
 }
 
 interface StatCardProps {
@@ -29,27 +50,30 @@ interface StatCardProps {
 function StatCard({ title, value, subtitle, trend, className = '' }: StatCardProps) {
   const getTrendColor = () => {
     switch (trend) {
-      case 'up': return 'text-green-400';
-      case 'down': return 'text-red-400';
-      default: return 'text-gray-400';
+      case 'up':
+        return 'text-green-400';
+      case 'down':
+        return 'text-red-400';
+      default:
+        return 'text-gray-400';
     }
   };
 
   return (
-    <div className={`rounded-lg p-6 bg-gray-800 border border-gray-700 shadow-lg hover:shadow-xl transition-shadow duration-300 ${className}`}>
+    <div
+      className={`rounded-lg p-6 bg-gray-800 border border-gray-700 shadow-lg hover:shadow-xl transition-shadow duration-300 ${className}`}
+    >
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-gray-400 text-sm font-medium uppercase tracking-wide">{title}</p>
-          <p className="text-2xl font-bold text-white mt-2">{value}</p>
+          <p className="text-gray-400 text-sm font-medium uppercase tracking-wide">
+            {title}
+          </p>
+          <p className="text-2xl font-bold text-white mt-2 break-all">{value}</p>
           {subtitle && (
             <p className={`text-sm mt-1 ${getTrendColor()}`}>{subtitle}</p>
           )}
         </div>
-        {trend && (
-          <div className={`text-2xl ${getTrendColor()}`}>
-            {trend === 'up' ? '↗️' : trend === 'down' ? '↘️' : '➡️'}
-          </div>
-        )}
+        {trend && <div className={`text-2xl ${getTrendColor()}`}>⬤</div>}
       </div>
     </div>
   );
@@ -58,58 +82,63 @@ function StatCard({ title, value, subtitle, trend, className = '' }: StatCardPro
 export default function Dashboard() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(true);
-
-  useEffect(() => {
-    fetchDashboardState();
-    
-    // Set up auto-refresh
-    const interval = setInterval(fetchDashboardState, 30000); // 30 seconds
-    return () => clearInterval(interval);
-  }, [demoMode]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchDashboardState = async () => {
     try {
-      const response = await fetch(`/api/dashboard/state?demo=${demoMode}`);
-      if (response.ok) {
-        const data = await response.json();
+      setErrorMsg(null);
+      const response = await fetch('/api/dashboard/state', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || data.success === false) {
+        setErrorMsg(data.error || 'Failed to load dashboard state');
+        setState(null);
+      } else {
         setState(data);
       }
     } catch (error) {
       console.error('Failed to fetch dashboard state:', error);
+      setErrorMsg('Failed to fetch dashboard data');
+      setState(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
+  useEffect(() => {
+    fetchDashboardState();
+    const interval = setInterval(fetchDashboardState, 30000); // 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTimestamp = (ts: string) => {
+    try {
+      return new Date(ts).toLocaleString();
+    } catch {
+      return ts;
+    }
   };
 
-  const formatPercentage = (value: number) => {
-    return `${(value * 100).toFixed(1)}%`;
-  };
-
-  const formatNumber = (value: number, decimals: number = 2) => {
-    return value.toFixed(decimals);
+  const getBalanceEntries = (state: DashboardState | null) => {
+    const balance =
+      state?.kraken?.tests?.balance?.balance ?? ({} as Record<string, string>);
+    return Object.entries(balance);
   };
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-8">Dashboard Overview</h1>
+          <h1 className="text-3xl font-bold text-white mb-8">Charity Bot Dashboard</h1>
+          <p className="text-gray-400">Loading live data from Kraken…</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="rounded-lg p-6 bg-gray-800 border border-gray-700 animate-pulse">
-              <div className="h-4 bg-gray-700 rounded mb-4"></div>
-              <div className="h-8 bg-gray-700 rounded"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="rounded-lg p-6 bg-gray-800 border border-gray-700 animate-pulse"
+            >
+              <div className="h-4 bg-gray-700 rounded mb-4" />
+              <div className="h-8 bg-gray-700 rounded" />
             </div>
           ))}
         </div>
@@ -117,187 +146,153 @@ export default function Dashboard() {
     );
   }
 
-  if (!state) {
+  if (!state || !state.kraken) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-400 text-lg">Failed to load dashboard data</p>
-        <button 
+      <div className="space-y-4 text-center py-12">
+        <h1 className="text-3xl font-bold text-white mb-4">Charity Bot Dashboard</h1>
+        <p className="text-gray-400 text-lg">
+          {errorMsg || 'Failed to load dashboard data'}
+        </p>
+        <button
           onClick={fetchDashboardState}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          Retry
+          🔄 Retry
         </button>
       </div>
     );
   }
+
+  const connection = state.kraken.tests.connection;
+  const balanceTest = state.kraken.tests.balance;
+  const status = state.kraken.tests.status;
+  const balanceEntries = getBalanceEntries(state);
+
+  const hasAssets = balanceEntries.length > 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard Overview</h1>
+          <h1 className="text-3xl font-bold text-white">Charity Bot Overview</h1>
           <p className="text-gray-400 mt-2">
-            Last updated: {new Date(state.last_updated).toLocaleString()}
+            Live status from Kraken · Last updated:{' '}
+            {formatTimestamp(state.last_updated)}
           </p>
         </div>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setDemoMode(!demoMode)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              demoMode 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-600 hover:bg-gray-700 text-white'
-            }`}
-          >
-            {demoMode ? '🧪 Demo Mode ON' : '🔗 Live Mode'}
-          </button>
-          <button
-            onClick={fetchDashboardState}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            🔄 Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchDashboardState}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
+          🔄 Refresh
+        </button>
       </div>
 
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Main Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
-          title="Bot A Balance"
-          value={formatCurrency(state.botA_virtual_usd)}
-          subtitle={`Cycle ${state.cycle_number} of ${formatCurrency(state.cycle_target)}`}
-          trend={state.botA_virtual_usd >= state.cycle_target ? 'up' : 'neutral'}
-          className="lg:col-span-1"
-        />
-        
-        <StatCard
-          title="Bot B Balance"
-          value={formatCurrency(state.botB_virtual_usd)}
-          subtitle={`MTD P&L: ${formatCurrency(state.botB_mtd_pnl)}`}
-          trend={state.botB_mtd_pnl > 0 ? 'up' : state.botB_mtd_pnl < 0 ? 'down' : 'neutral'}
-          className="lg:col-span-1"
+          title="Kraken Connection"
+          value={connection.success ? '✅ Online' : '⚠️ Offline'}
+          subtitle={connection.message}
+          trend={connection.success ? 'up' : 'down'}
         />
 
         <StatCard
-          title="Market Confidence"
-          value={formatNumber(state.mcs, 3)}
-          subtitle={`FGI: ${state.fgi}/100`}
-          trend={state.mcs >= 0.7 ? 'up' : state.mcs >= 0.4 ? 'neutral' : 'down'}
-          className="lg:col-span-1"
+          title="API Configuration"
+          value={
+            status.apiKeyConfigured && status.apiSecretConfigured
+              ? 'Keys configured'
+              : 'Missing keys'
+          }
+          subtitle={`Mode: ${status.mode}${
+            status.realTradingEnabled ? ' · REAL TRADING ON' : ' · Read-only'
+          }`}
+          trend={
+            status.apiKeyConfigured && status.apiSecretConfigured ? 'up' : 'down'
+          }
         />
 
         <StatCard
-          title="Open Trades"
-          value={state.open_trades}
-          subtitle={`${state.botA_today_trades} Bot A + ${state.botB_today_trades} Bot B today`}
-          className="lg:col-span-1"
-        />
-
-        <StatCard
-          title="Bot A Win Rate"
-          value={formatPercentage(state.botA_win_rate)}
-          subtitle="Today's performance"
-          trend={state.botA_win_rate >= 0.5 ? 'up' : 'down'}
-          className="lg:col-span-1"
-        />
-
-        <StatCard
-          title="Bot B Win Rate"
-          value={formatPercentage(state.botB_win_rate)}
-          subtitle="Today's performance"
-          trend={state.botB_win_rate >= 0.6 ? 'up' : 'down'}
-          className="lg:col-span-1"
+          title="Assets on Kraken"
+          value={hasAssets ? `${balanceEntries.length} assets` : 'No assets detected'}
+          subtitle={
+            hasAssets
+              ? 'Ready for strategy & donations'
+              : 'Top up your account to start trading & donating'
+          }
+          trend={hasAssets ? 'up' : 'neutral'}
         />
       </div>
 
-      {/* Cycle Progress */}
+      {/* Asset list */}
       <div className="rounded-lg p-6 bg-gray-800 border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-4">Bot A Cycle Progress</h3>
-        <div className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Current Balance</span>
-            <span className="text-white font-medium">{formatCurrency(state.botA_virtual_usd)}</span>
+        <h3 className="text-lg font-semibold text-white mb-4">
+          Portfolio Balances (Raw from Kraken)
+        </h3>
+        {!hasAssets ? (
+          <p className="text-gray-400">
+            Kraken reports an empty balance. Once you deposit funds, they will show up
+            here and can be linked to your charity logic.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-700">
+                  <th className="text-left py-2 pr-4">Asset</th>
+                  <th className="text-right py-2">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balanceEntries.map(([asset, amount]) => (
+                  <tr key={asset} className="border-b border-gray-800">
+                    <td className="py-2 pr-4 text-gray-200">{asset}</td>
+                    <td className="py-2 text-right text-gray-100">{amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Cycle Target</span>
-            <span className="text-white font-medium">{formatCurrency(state.cycle_target)}</span>
-          </div>
-          <div className="w-full bg-gray-700 rounded-full h-3">
-            <div 
-              className="bg-gradient-to-r from-blue-500 to-green-500 h-3 rounded-full transition-all duration-500"
-              style={{ 
-                width: `${Math.min((state.botA_virtual_usd / state.cycle_target) * 100, 100)}%` 
-              }}
-            ></div>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-gray-400">
-              {((state.botA_virtual_usd / state.cycle_target) * 100).toFixed(1)}% Complete
-            </span>
-            <span className="text-gray-400">
-              {state.botA_virtual_usd >= state.cycle_target ? '✅ Target Reached!' : '🎯 In Progress'}
-            </span>
-          </div>
+        )}
+      </div>
+
+      {/* Donation & safety status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="rounded-lg p-6 bg-gray-800 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-3">Donation Engine</h3>
+          <p className="text-gray-300 text-sm">
+            Zodra je balans en winst zichtbaar zijn, kunnen we hier een module tonen
+            met:
+          </p>
+          <ul className="mt-2 text-gray-300 text-sm list-disc list-inside space-y-1">
+            <li>Ingeschatte totale portefeuillewaarde</li>
+            <li>Gekozen donatiepercentage (bijv. 10%)</li>
+            <li>Berekeningen per week/maand</li>
+          </ul>
+          <p className="text-gray-400 text-xs mt-3">
+            Dit is nu puur visueel. De logica kan we gekoppeld worden zodra jouw
+            portefeuille echt gevuld is.
+          </p>
         </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <a
-          href="/bot-a"
-          className="block p-4 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 transform hover:scale-105"
-        >
-          <div className="text-center">
-            <div className="text-2xl mb-2">🤖</div>
-            <h3 className="font-semibold text-white">View Bot A</h3>
-            <p className="text-blue-100 text-sm mt-1">Aggressive Growth Engine</p>
-          </div>
-        </a>
-
-        <a
-          href="/bot-b"
-          className="block p-4 bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-300 transform hover:scale-105"
-        >
-          <div className="text-center">
-            <div className="text-2xl mb-2">💝</div>
-            <h3 className="font-semibold text-white">View Bot B</h3>
-            <p className="text-green-100 text-sm mt-1">Donation Engine</p>
-          </div>
-        </a>
-
-        <a
-          href="/sentiment"
-          className="block p-4 bg-gradient-to-r from-purple-600 to-purple-700 rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-300 transform hover:scale-105"
-        >
-          <div className="text-center">
-            <div className="text-2xl mb-2">📊</div>
-            <h3 className="font-semibold text-white">Sentiment Analysis</h3>
-            <p className="text-purple-100 text-sm mt-1">Market Confidence Score</p>
-          </div>
-        </a>
-      </div>
-
-      {/* Status Indicators */}
-      <div className="rounded-lg p-6 bg-gray-800 border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-4">System Status</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-gray-300">Bot A Active</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-gray-300">Bot B Active</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-            <span className="text-gray-300">Sentiment Updated</span>
-          </div>
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-            <span className="text-gray-300">Database Connected</span>
-          </div>
+        <div className="rounded-lg p-6 bg-gray-800 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-3">Safety & Trading Mode</h3>
+          <ul className="text-gray-300 text-sm space-y-1">
+            <li>
+              · Real trading enabled:{' '}
+              {status.realTradingEnabled ? '✅ YES' : '🛡️ NO (safe)'}
+            </li>
+            <li>
+              · Trade confirmation required:{' '}
+              {status.tradeConfirmationRequired ? '✅ YES' : '⚠️ NO'}
+            </li>
+            <li>· Current mode: {status.mode}</li>
+          </ul>
+          <p className="text-gray-400 text-xs mt-3">
+            Pas deze instellingen alleen aan als je bewust live wilt traden. In
+            read-only mode kun je wel alles simuleren en donatie-strategieën testen.
+          </p>
         </div>
       </div>
     </div>
