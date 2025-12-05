@@ -48,6 +48,15 @@ class KrakenService {
     this.apiSecret = process.env.KRAKEN_API_SECRET || '';
     this.mockMode = process.env.USE_MOCK_KRAKEN === 'true';
     
+    // Environment variable check for debugging
+    console.log("ENV CHECK:", {
+      keyExists: !!this.apiKey,
+      secretExists: !!this.apiSecret,
+      mockMode: this.mockMode,
+      fullKey: this.apiKey ? `${this.apiKey.substring(0, 10)}...` : 'empty',
+      fullSecret: this.apiSecret ? `${this.apiSecret.substring(0, 20)}...` : 'empty'
+    });
+    
     // Initialize HTTP client
     this.httpClient = axios.create({
       baseURL: 'https://api.kraken.com',
