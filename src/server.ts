@@ -2,6 +2,7 @@ import express from 'express';
 import { testConnection, closeDatabase, getDatabaseType } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
+import testBalanceRoute from './routes/testBalance';
 
 // Load environment variables
 import dotenv from 'dotenv';
@@ -31,6 +32,9 @@ app.get('/health', async (_req, res) => {
     res.status(500).json({ error: 'Health check failed' });
   }
 });
+
+// Test balance endpoint
+app.use("/api/test-balance", testBalanceRoute);
 
 // Bot status endpoints
 app.get('/api/bots/status', async (_req, res) => {
