@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { krakenService } from '@/services/krakenService';
+import { krakenService } from '../../../../../src/services/krakenService';
 
 export async function GET(request: NextRequest) {
   try {
