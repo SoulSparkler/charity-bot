@@ -38,7 +38,6 @@ export interface PlaceOrderRequest {
 class KrakenService {
   private apiKey: string;
   private apiSecret: string;
-  private mockMode: boolean = false;
   private httpClient: AxiosInstance;
   private lastRequestTime: number = 0;
   private readonly minRequestInterval: number = 1000; // 1 second between requests
@@ -46,13 +45,11 @@ class KrakenService {
   constructor() {
     this.apiKey = process.env.KRAKEN_API_KEY || '';
     this.apiSecret = process.env.KRAKEN_API_SECRET || '';
-    this.mockMode = process.env.USE_MOCK_KRAKEN === 'true';
     
     // Environment variable check for debugging
     console.log("ENV CHECK:", {
       keyExists: !!this.apiKey,
       secretExists: !!this.apiSecret,
-      mockMode: this.mockMode,
       fullKey: this.apiKey ? `${this.apiKey.substring(0, 10)}...` : 'empty',
       fullSecret: this.apiSecret ? `${this.apiSecret.substring(0, 20)}...` : 'empty'
     });
@@ -68,7 +65,7 @@ class KrakenService {
 
     // Set up request interceptor for rate limiting
     this.httpClient.interceptors.request.use(async (config) => {
-      if (!this.mockMode && config.url?.includes('/0/private/')) {
+      if (config.url?.includes('/0/private/')) {
         // Rate limit private API calls
         const now = Date.now();
         const timeSinceLastRequest = now - this.lastRequestTime;
@@ -85,19 +82,15 @@ class KrakenService {
       return config;
     });
 
-    if (!this.apiKey && !this.mockMode) {
+    if (!this.apiKey) {
       krakenLogger.warn('No Kraken API key provided. KrakenService will not work properly.');
     }
 
-    if (!this.apiSecret && !this.mockMode) {
+    if (!this.apiSecret) {
       krakenLogger.warn('No Kraken API secret provided. KrakenService will not work properly.');
     }
 
-    if (this.mockMode) {
-      krakenLogger.info('🧪 Running in MOCK MODE - no real API calls will be made');
-    } else {
-      krakenLogger.info('🚀 Running in LIVE MODE - using real Kraken API');
-    }
+    krakenLogger.info('🚀 Running in LIVE MODE - using real Kraken API');
   }
 
   /**
@@ -157,15 +150,6 @@ class KrakenService {
    * Get account balances
    */
   async getBalances(): Promise<KrakenBalance> {
-    if (this.mockMode) {
-      krakenLogger.debug('Returning mock balances');
-      return {
-        'ZUSD': '50000.00',
-        'XXBT': '1.5',
-        'XETH': '20.0',
-      };
-    }
-
     try {
       krakenLogger.info('Fetching real account balances from Kraken...');
       const response = await this.httpClient.post('/0/private/Balance');
@@ -189,10 +173,7 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to fetch account balances', error as Error);
-      
-      // Safe fallback - return minimal safe data
-      krakenLogger.warn('Using safe fallback - returning empty balances');
-      return {};
+      throw error;
     }
   }
 
@@ -200,10 +181,6 @@ class KrakenService {
    * Get total USD value of all holdings
    */
   async getTotalUSDValue(): Promise<number> {
-    if (this.mockMode) {
-      return 50000; // Mock balance
-    }
-
     try {
       const balances = await this.getBalances();
       
@@ -225,8 +202,7 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to calculate total USD value', error as Error);
-      // Safe fallback
-      return 0;
+      throw error;
     }
   }
 
@@ -234,24 +210,6 @@ class KrakenService {
    * Get ticker information
    */
   async getTicker(pairs: string[]): Promise<{ [pair: string]: KrakenTicker }> {
-    if (this.mockMode) {
-      krakenLogger.debug(`Returning mock ticker data for ${pairs.join(', ')}`);
-      return {
-        'BTCUSD': {
-          pair: 'BTCUSD',
-          price: '45000.25',
-          volume: '1250.5',
-          timestamp: Date.now(),
-        },
-        'ETHUSD': {
-          pair: 'ETHUSD',
-          price: '3000.12',
-          volume: '2500.5',
-          timestamp: Date.now(),
-        },
-      };
-    }
-
     try {
       // Convert pairs to Kraken format (remove / and use proper format)
       const krakenPairs = pairs.map(pair => pair.replace('/', '')).join(',');
@@ -287,23 +245,7 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to fetch ticker data', error as Error);
-      
-      // Fallback to mock data on error
-      krakenLogger.warn('Using mock ticker data due to API failure');
-      return {
-        'BTCUSD': {
-          pair: 'BTCUSD',
-          price: '45000.00',
-          volume: '1000.0',
-          timestamp: Date.now(),
-        },
-        'ETHUSD': {
-          pair: 'ETHUSD',
-          price: '3000.00',
-          volume: '2000.0',
-          timestamp: Date.now(),
-        },
-      };
+      throw error;
     }
   }
 
@@ -313,25 +255,9 @@ class KrakenService {
   async placeSpotOrder(orderRequest: PlaceOrderRequest): Promise<KrakenOrder> {
     const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
     
-    if (this.mockMode || !allowRealTrading) {
-      if (this.mockMode) {
-        krakenLogger.info('🧪 Returning mock order result');
-      } else {
-        krakenLogger.warn('🚫 Real trading disabled - set ALLOW_REAL_TRADING=true to enable');
-      }
-      
-      return {
-        orderId: `order_${Date.now()}`,
-        pair: orderRequest.pair,
-        side: orderRequest.side,
-        type: orderRequest.type,
-        size: orderRequest.size,
-        price: orderRequest.price || null,
-        status: 'open',
-        createdAt: new Date(),
-        filledSize: 0,
-        remainingSize: orderRequest.size,
-      };
+    if (!allowRealTrading) {
+      krakenLogger.warn('🚫 Real trading disabled - set ALLOW_REAL_TRADING=true to enable');
+      throw new Error('Real trading is disabled. Set ALLOW_REAL_TRADING=true to enable.');
     }
 
     try {
@@ -388,10 +314,6 @@ class KrakenService {
    * Get open orders
    */
   async getOpenOrders(): Promise<{ [orderId: string]: any }> {
-    if (this.mockMode) {
-      return {};
-    }
-
     try {
       const response = await this.httpClient.post('/0/private/OpenOrders');
       
@@ -403,7 +325,7 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to fetch open orders', error as Error);
-      return {};
+      throw error;
     }
   }
 
@@ -413,8 +335,8 @@ class KrakenService {
   async cancelAllOrders(): Promise<{ count: number }> {
     const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
     
-    if (this.mockMode || !allowRealTrading) {
-      return { count: 0 };
+    if (!allowRealTrading) {
+      throw new Error('Real trading is disabled. Set ALLOW_REAL_TRADING=true to enable.');
     }
 
     try {
@@ -441,26 +363,6 @@ class KrakenService {
    * Get OHLC data (for technical analysis)
    */
   async getOHLC(pair: string, interval: number = 60): Promise<number[][]> {
-    if (this.mockMode) {
-      // Generate mock OHLC data
-      const mockData: number[][] = [];
-      const basePrice = pair === 'BTCUSD' ? 45000 : 3000;
-      
-      for (let i = 0; i < 200; i++) {
-        const timestamp = Date.now() - (i * interval * 60 * 1000);
-        const price = basePrice + (Math.random() - 0.5) * 1000;
-        const open = price;
-        const high = price + Math.random() * 100;
-        const low = price - Math.random() * 100;
-        const close = price + (Math.random() - 0.5) * 50;
-        const volume = Math.random() * 100;
-        
-        mockData.push([timestamp, open, high, low, close, volume]);
-      }
-      
-      return mockData;
-    }
-
     try {
       const krakenPair = pair.replace('/', '');
       const response = await this.httpClient.get(`/0/public/OHLC?pair=${krakenPair}&interval=${interval}`);
@@ -483,17 +385,8 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to fetch OHLC data', error as Error);
-      
-      // Return empty array as fallback
-      return [];
+      throw error;
     }
-  }
-
-  /**
-   * Check if service is in mock mode
-   */
-  isMockMode(): boolean {
-    return this.mockMode;
   }
 
   /**
@@ -501,13 +394,6 @@ class KrakenService {
    */
   async testConnection(): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      if (this.mockMode) {
-        return {
-          success: true,
-          message: 'Mock mode - API connection test successful',
-        };
-      }
-
       if (!this.apiKey || !this.apiSecret) {
         return {
           success: false,
@@ -586,11 +472,11 @@ class KrakenService {
     const tradeConfirmationRequired = process.env.TRADE_CONFIRMATION_REQUIRED === 'true';
     
     return {
-      status: this.mockMode ? 'mock' : 'live',
-      mode: this.mockMode ? 'testing' : (allowRealTrading ? 'production' : 'read-only'),
+      status: 'live',
+      mode: allowRealTrading ? 'production' : 'read-only',
       apiKeyConfigured: !!this.apiKey,
       apiSecretConfigured: !!this.apiSecret,
-      realTradingEnabled: allowRealTrading && !this.mockMode,
+      realTradingEnabled: allowRealTrading,
       tradeConfirmationRequired,
     };
   }

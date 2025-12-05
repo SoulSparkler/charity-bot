@@ -32,7 +32,6 @@ interface BotAData {
 export default function BotAPage() {
   const [data, setData] = useState<BotAData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(true);
 
   useEffect(() => {
     fetchBotAData();
@@ -40,11 +39,11 @@ export default function BotAPage() {
     // Set up auto-refresh
     const interval = setInterval(fetchBotAData, 30000); // 30 seconds
     return () => clearInterval(interval);
-  }, [demoMode]);
+  }, []);
 
   const fetchBotAData = async () => {
     try {
-      const response = await fetch(`/api/dashboard/bot-a?demo=${demoMode}`);
+      const response = await fetch('/api/dashboard/bot-a');
       if (response.ok) {
         const botData = await response.json();
         setData(botData);
@@ -132,24 +131,12 @@ export default function BotAPage() {
             Focused on rapid balance growth through aggressive trading strategies
           </p>
         </div>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setDemoMode(!demoMode)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              demoMode 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-600 hover:bg-gray-700 text-white'
-            }`}
-          >
-            {demoMode ? '🧪 Demo Mode ON' : '🔗 Live Mode'}
-          </button>
-          <button
-            onClick={fetchBotAData}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            🔄 Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchBotAData}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+        >
+          🔄 Refresh
+        </button>
       </div>
 
       {/* Stats Cards */}

@@ -40,7 +40,6 @@ interface BotBData {
 export default function BotBPage() {
   const [data, setData] = useState<BotBData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(true);
 
   useEffect(() => {
     fetchBotBData();
@@ -48,11 +47,11 @@ export default function BotBPage() {
     // Set up auto-refresh
     const interval = setInterval(fetchBotBData, 30000); // 30 seconds
     return () => clearInterval(interval);
-  }, [demoMode]);
+  }, []);
 
   const fetchBotBData = async () => {
     try {
-      const response = await fetch(`/api/dashboard/bot-b?demo=${demoMode}`);
+      const response = await fetch('/api/dashboard/bot-b');
       if (response.ok) {
         const botData = await response.json();
         setData(botData);
@@ -138,24 +137,12 @@ export default function BotBPage() {
             Conservative trading focused on generating consistent charitable donations
           </p>
         </div>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setDemoMode(!demoMode)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              demoMode 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-600 hover:bg-gray-700 text-white'
-            }`}
-          >
-            {demoMode ? '🧪 Demo Mode ON' : '🔗 Live Mode'}
-          </button>
-          <button
-            onClick={fetchBotBData}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
-          >
-            🔄 Refresh
-          </button>
-        </div>
+        <button
+          onClick={fetchBotBData}
+          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+        >
+          🔄 Refresh
+        </button>
       </div>
 
       {/* Stats Cards */}
