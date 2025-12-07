@@ -269,29 +269,28 @@ class KrakenService {
       const balances = await this.getBalances();
       const tickerData = await this.getTicker(['BTCUSD', 'ETHUSD']);
       
-      // Extract clean values - handle multiple possible Kraken key formats
-      const usdBalance = parseFloat(balances['ZUSD'] ?? balances['USD'] ?? '0');
-      
-      // Debug: Log all available balance keys to help diagnose BTC detection issues
+      // Debug: Log all available balance keys to help diagnose issues
       const availableKeys = Object.keys(balances);
       krakenLogger.debug(`Available balance keys: ${availableKeys.join(', ')}`);
       
-      // Check BTC with all possible keys
-      const btcFromXXBT = balances['XXBT'] ? parseFloat(balances['XXBT']) : 0;
-      const btcFromXBT = balances['XBT'] ? parseFloat(balances['XBT']) : 0;
-      const btcFromBTC = balances['BTC'] ? parseFloat(balances['BTC']) : 0;
-      const btcBalance = btcFromXXBT || btcFromXBT || btcFromBTC;
+      // Extract clean values - handle multiple possible Kraken key formats
+      // USD: Use _tradeBalance (available for trading), fallback to ZUSD
+      const usdBalance = parseFloat(balances['_tradeBalance'] ?? balances['ZUSD'] ?? balances['USD'] ?? '0');
       
-      krakenLogger.debug(`BTC detection: XXBT=${btcFromXXBT}, XBT=${btcFromXBT}, BTC=${btcFromBTC}, Final=${btcBalance}`);
+      // BTC: Use XXBT first, then XBT (no BTC fallback as requested)
+      const btcBalance = parseFloat(balances['XXBT'] ?? balances['XBT'] ?? '0');
       
       const ethBalance = parseFloat(balances['XETH'] ?? balances['ETH'] ?? '0');
       
-      // Calculate portfolio value
+      // Portfolio value: Use _equity (total portfolio value), fallback to calculated
+      const equityValue = parseFloat(balances['_equity'] ?? '0');
+      
+      // Calculate portfolio value if equity not available
       const btcPrice = parseFloat(tickerData['BTCUSD']?.price || '0');
       const ethPrice = parseFloat(tickerData['ETHUSD']?.price || '0');
-      const portfolioValueUSD = usdBalance + (btcBalance * btcPrice) + (ethBalance * ethPrice);
+      const portfolioValueUSD = equityValue > 0 ? equityValue : usdBalance + (btcBalance * btcPrice) + (ethBalance * ethPrice);
       
-      krakenLogger.debug(`Portfolio: USD=${usdBalance}, BTC=${btcBalance}, ETH=${ethBalance}, Total=${portfolioValueUSD}`);
+      krakenLogger.debug(`Portfolio: USD=${usdBalance}, BTC=${btcBalance}, ETH=${ethBalance}, Equity=${equityValue}, Total=${portfolioValueUSD}`);
       
       return {
         USD: usdBalance,
