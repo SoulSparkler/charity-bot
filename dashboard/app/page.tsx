@@ -185,65 +185,23 @@ export default function Dashboard() {
   const balanceTest = state.kraken.tests.balance;
   const status = state.kraken.tests.status;
   
-  // Parse balances directly in dashboard to ensure correct values
+  // Use clean portfolio data from backend when available
   const rawBalances = state?.kraken?.tests?.balance?.balance ?? {};
-  
-  // Debug: Log the raw balances to see what's available
-  console.log('🔍 Raw balances from API:', rawBalances);
-  console.log('🔍 Available balance keys:', Object.keys(rawBalances));
-  
-  // USD Balance: Use _tradeBalance first, then ZUSD
-  const usdBalance = parseFloat(
-    rawBalances["_tradeBalance"] ??
-    rawBalances["ZUSD"] ??
-    "0"
-  );
-  
-  // BTC Balance: Kraken uses XXBT format, prioritize XXBT first
-  const btcBalance = parseFloat(
-    rawBalances["XXBT"] ??
-    rawBalances["XBT"] ??
-    "0"
-  );
-  
-  // ETH Balance (if available)
-  const ethBalance = parseFloat(
-    rawBalances["XETH"] ??
-    rawBalances["ETH"] ??
-    "0"
-  );
-  
-  // Asset count: Only count real assets (not Unified Account internal fields)
   const assetKeys = Object.keys(rawBalances).filter(key => !key.startsWith("_"));
   const assetCount = assetKeys.length;
-  
-  // Debug: Log the parsed values
-  console.log('💰 Parsed values:', {
-    usdBalance,
-    btcBalance,
-    ethBalance,
-    assetCount,
-    assetKeys
-  });
   
   // Debug: Log portfolio data usage
   console.log('📊 Portfolio data usage:', {
     hasPortfolioData: !!state.portfolio,
     portfolioUSD: state.portfolio?.USD,
     portfolioBTC: state.portfolio?.BTC,
+    portfolioETH: state.portfolio?.ETH,
+    portfolioValueUSD: state.portfolio?.portfolioValueUSD,
     usingPortfolioData: !!state.portfolio
   });
   
   // Get balance entries for table display (showing raw Kraken data format)
   const balanceEntries = getBalanceEntries(state);
-  
-  // Use portfolioOverride only for clean display when we have real assets (not just Unified Account fields)
-  const portfolioOverride = {
-    USD: usdBalance,
-    BTC: btcBalance,
-    ETH: ethBalance,
-    portfolioValueUSD: usdBalance + (btcBalance * 45000) + (ethBalance * 3000) // Rough estimates
-  };
 
   return (
     <div className="space-y-6">
@@ -318,26 +276,46 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {(state.portfolio || assetCount > 0) ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-gray-400 text-sm">USD Balance</p>
-              <p className="text-2xl font-bold text-green-400">
-                ${state.portfolio ? state.portfolio.USD.toFixed(2) : portfolioOverride.USD.toFixed(2)}
-              </p>
+        {state.portfolio ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">USD Balance</p>
+                <p className="text-2xl font-bold text-green-400">
+                  ${state.portfolio.USD.toFixed(2)}
+                </p>
+              </div>
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">BTC Balance</p>
+                <p className="text-2xl font-bold text-orange-400">
+                  {state.portfolio.BTC.toFixed(8)} BTC
+                </p>
+              </div>
+              {state.portfolio.ETH && state.portfolio.ETH > 0 && (
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">ETH Balance</p>
+                  <p className="text-2xl font-bold text-purple-400">
+                    {state.portfolio.ETH.toFixed(8)} ETH
+                  </p>
+                </div>
+              )}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <p className="text-gray-400 text-sm">Total Portfolio Value</p>
+                <p className="text-2xl font-bold text-blue-400">
+                  ${state.portfolio.portfolioValueUSD.toFixed(2)}
+                </p>
+              </div>
             </div>
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-gray-400 text-sm">BTC Balance</p>
-              <p className="text-2xl font-bold text-orange-400">
-                {state.portfolio ? state.portfolio.BTC.toFixed(8) : portfolioOverride.BTC.toFixed(8)} BTC
-              </p>
+            <div className="text-xs text-gray-500">
+              Portfolio values calculated using real-time Kraken market data
             </div>
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-gray-400 text-sm">Total Portfolio Value</p>
-              <p className="text-2xl font-bold text-blue-400">
-                ${state.portfolio ? state.portfolio.portfolioValueUSD.toFixed(2) : portfolioOverride.portfolioValueUSD.toFixed(2)}
-              </p>
-            </div>
+          </div>
+        ) : assetCount > 0 ? (
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">
+            <p className="text-yellow-300 text-sm">
+              ⚠️ Portfolio data unavailable. Raw balances detected but not processed. 
+              Check backend /api/portfolio endpoint.
+            </p>
           </div>
         ) : assetCount === 0 ? (
           <p className="text-gray-400">
