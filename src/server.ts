@@ -112,7 +112,7 @@ app.get('/api/portfolio', async (_req, res) => {
         USD: portfolio.USD,
         BTC: portfolio.BTC,
         ETH: portfolio.ETH,
-        portfolioValueUSD: portfolio.portfolioValueUSD
+        totalValue: portfolio.portfolioValueUSD
       },
       timestamp: new Date().toISOString()
     });

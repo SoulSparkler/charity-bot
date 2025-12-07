@@ -37,7 +37,7 @@ interface PortfolioBalances {
   USD: number;
   BTC: number;
   ETH?: number;
-  portfolioValueUSD: number;
+  totalValue: number;
 }
 
 interface DashboardState {
@@ -196,7 +196,7 @@ export default function Dashboard() {
     portfolioUSD: state.portfolio?.USD,
     portfolioBTC: state.portfolio?.BTC,
     portfolioETH: state.portfolio?.ETH,
-    portfolioValueUSD: state.portfolio?.portfolioValueUSD,
+    totalValue: state.portfolio?.totalValue,
     usingPortfolioData: !!state.portfolio
   });
   
@@ -302,7 +302,7 @@ export default function Dashboard() {
               <div className="bg-gray-700 rounded-lg p-4">
                 <p className="text-gray-400 text-sm">Total Portfolio Value</p>
                 <p className="text-2xl font-bold text-blue-400">
-                  ${state.portfolio.portfolioValueUSD.toFixed(2)}
+                  ${state.portfolio.totalValue.toFixed(2)}
                 </p>
               </div>
             </div>
