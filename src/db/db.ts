@@ -222,6 +222,32 @@ export async function ensureStartSnapshot(getCurrentBalance: () => Promise<numbe
   return currentBalance;
 }
 
+/**
+ * Get performance data for dashboard
+ */
+export async function getPerformanceData(): Promise<{
+  startingBalance: number | null;
+  currentBalance: number | null;
+  dailyPL: number | null;
+  weeklyPL: number | null;
+  monthlyPL: number | null;
+  totalReturnPercent: number | null;
+}> {
+  const startSnapshot = await getSnapshot('start');
+  const dailySnapshot = await getSnapshot('daily');
+  const weeklySnapshot = await getSnapshot('weekly');
+  const monthlySnapshot = await getSnapshot('monthly');
+
+  return {
+    startingBalance: startSnapshot?.balance ?? null,
+    currentBalance: null, // Will be filled by caller with live balance
+    dailyPL: null,
+    weeklyPL: null,
+    monthlyPL: null,
+    totalReturnPercent: null
+  };
+}
+
 export async function healthCheck(): Promise<{
   status: string;
   timestamp: string;

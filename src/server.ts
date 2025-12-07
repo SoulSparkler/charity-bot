@@ -1,5 +1,5 @@
 import express from 'express';
-import { testConnection, closeDatabase, getDatabaseType, initializeDatabase, ensureStartSnapshot } from './db/db';
+import { testConnection, closeDatabase, getDatabaseType, initializeDatabase, ensureStartSnapshot, getSnapshot } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
 import testBalanceRoute from './routes/testBalance';
@@ -100,6 +100,59 @@ app.get('/api/risk/status', async (_req, res) => {
   } catch (error) {
     console.error('Error getting risk status:', error);
     res.status(500).json({ error: 'Failed to get risk status' });
+  }
+});
+
+// Performance data endpoint
+app.get('/api/performance', async (_req, res) => {
+  try {
+    // Get snapshots
+    const startSnapshot = await getSnapshot('start');
+    const dailySnapshot = await getSnapshot('daily');
+    const weeklySnapshot = await getSnapshot('weekly');
+    const monthlySnapshot = await getSnapshot('monthly');
+    
+    // Get current balance
+    let currentBalance: number | null = null;
+    try {
+      currentBalance = await krakenService.getTotalUSDValue();
+    } catch (error) {
+      console.warn('Could not fetch current balance:', error);
+    }
+
+    // Calculate P/L values
+    const startingBalance = startSnapshot?.balance ?? null;
+    const dailyPL = (currentBalance !== null && dailySnapshot) 
+      ? currentBalance - dailySnapshot.balance 
+      : null;
+    const weeklyPL = (currentBalance !== null && weeklySnapshot) 
+      ? currentBalance - weeklySnapshot.balance 
+      : null;
+    const monthlyPL = (currentBalance !== null && monthlySnapshot) 
+      ? currentBalance - monthlySnapshot.balance 
+      : null;
+    const totalReturnPercent = (currentBalance !== null && startingBalance !== null && startingBalance > 0)
+      ? ((currentBalance - startingBalance) / startingBalance) * 100
+      : null;
+
+    res.json({
+      startingBalance,
+      currentBalance,
+      dailyPL,
+      weeklyPL,
+      monthlyPL,
+      totalReturnPercent,
+      snapshots: {
+        start: startSnapshot,
+        daily: dailySnapshot,
+        weekly: weeklySnapshot,
+        monthly: monthlySnapshot
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting performance data:', error);
+    res.status(500).json({ error: 'Failed to get performance data' });
   }
 });
 
