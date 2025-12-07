@@ -160,11 +160,27 @@ class KrakenService {
     try {
       krakenLogger.info('Fetching account balances from Kraken (Unified account mode)...');
       
+      // Asset name mapping for Kraken codes to standard codes
+      const assetNameMap: { [krakenCode: string]: string } = {
+        'XXBT': 'BTC', // Bitcoin
+        'XBT': 'BTC',  // Bitcoin (alternative code)
+        'XETH': 'ETH', // Ethereum
+        'ZUSD': 'USD', // US Dollar
+        'ZEUR': 'EUR', // Euro
+        'XBTUSD': 'BTCUSD',
+        'ETHUSD': 'ETHUSD'
+      };
+      
       // Try TradeBalance first (required for Unified accounts)
       try {
+        krakenLogger.info('🔍 Attempting TradeBalance API call...');
         const tradeBalanceResponse = await this.httpClient.post('/0/private/TradeBalance', {
           asset: 'ZUSD'
         });
+        
+        // Log the RAW TradeBalance response for debugging
+        const tradeBalanceLog = `📋 RAW TradeBalance Response: fullResponse=${JSON.stringify(tradeBalanceResponse.data)}, result=${JSON.stringify(tradeBalanceResponse.data.result)}, error=${JSON.stringify(tradeBalanceResponse.data.error)}`;
+        krakenLogger.info(tradeBalanceLog);
         
         if (tradeBalanceResponse.data.error && tradeBalanceResponse.data.error.length > 0) {
           throw new Error(`TradeBalance API error: ${tradeBalanceResponse.data.error.join(', ')}`);
@@ -192,14 +208,31 @@ class KrakenService {
           balances['_equity'] = tradeBalanceData.e;
         }
 
-        krakenLogger.info(`Retrieved balance via TradeBalance: ${Object.keys(balances).length} fields`);
+        krakenLogger.info(`TradeBalance returned ${Object.keys(balances).length} fields: ${Object.keys(balances).join(', ')}`);
+        
+        // Check if we got individual crypto balances or just USD equivalents
+        const hasCryptoBalances = Object.keys(balances).some(key => 
+          key === 'XXBT' || key === 'XBT' || key === 'XETH' || key === 'BTC' || key === 'ETH'
+        );
+        
+        if (!hasCryptoBalances) {
+          krakenLogger.warn('⚠️ TradeBalance only returned USD-equivalent values, no individual crypto balances found. Will try BalanceEx...');
+          throw new Error('TradeBalance did not return individual crypto balances');
+        }
+        
+        krakenLogger.info('✅ TradeBalance returned individual crypto balances, using this data');
         return balances;
         
       } catch (tradeBalanceError) {
-        krakenLogger.warn(`TradeBalance failed, falling back to BalanceEx: ${(tradeBalanceError as Error).message}`);
+        krakenLogger.warn(`TradeBalance failed or insufficient, falling back to BalanceEx: ${(tradeBalanceError as Error).message}`);
         
-        // Fallback to BalanceEx
+        // Always try BalanceEx to get individual crypto balances
+        krakenLogger.info('🔍 Attempting BalanceEx API call...');
         const balanceExResponse = await this.httpClient.post('/0/private/BalanceEx');
+        
+        // Log the RAW BalanceEx response for debugging
+        const balanceExLog = `📋 RAW BalanceEx Response: fullResponse=${JSON.stringify(balanceExResponse.data)}, result=${JSON.stringify(balanceExResponse.data.result)}, error=${JSON.stringify(balanceExResponse.data.error)}`;
+        krakenLogger.info(balanceExLog);
         
         if (balanceExResponse.data.error && balanceExResponse.data.error.length > 0) {
           throw new Error(`BalanceEx API error: ${balanceExResponse.data.error.join(', ')}`);
@@ -208,14 +241,19 @@ class KrakenService {
         const balances: KrakenBalance = {};
         const balanceExData = balanceExResponse.data.result;
         
+        krakenLogger.info(`BalanceEx returned data for currencies: ${Object.keys(balanceExData).join(', ')}`);
+        
         // BalanceEx returns extended balance info per currency
         for (const [currency, data] of Object.entries(balanceExData)) {
           const balanceInfo = data as { balance?: string; hold_trade?: string };
           if (balanceInfo.balance && parseFloat(balanceInfo.balance) > 0) {
             balances[currency] = balanceInfo.balance;
+            krakenLogger.info(`📈 Found balance for ${currency}: ${balanceInfo.balance}`);
           }
         }
 
+        // Log all final balances before returning
+        krakenLogger.info(`📊 Final balances from BalanceEx: ${JSON.stringify(balances)}`);
         krakenLogger.info(`Retrieved ${Object.keys(balances).length} non-zero balances via BalanceEx`);
         return balances;
       }
@@ -273,11 +311,23 @@ class KrakenService {
       const availableKeys = Object.keys(balances);
       krakenLogger.debug(`Available balance keys: ${availableKeys.join(', ')}`);
       
+      // Asset name mapping for Kraken codes to standard codes
+      const assetNameMap: { [krakenCode: string]: string } = {
+        'XXBT': 'BTC', // Bitcoin (primary Kraken code)
+        'XBT': 'BTC',  // Bitcoin (alternative code)
+        'XETH': 'ETH', // Ethereum
+        'ZUSD': 'USD', // US Dollar
+        'ZEUR': 'EUR'  // Euro
+      };
+      
+      // Log the raw balances before processing
+      krakenLogger.info(`📊 Raw balances before mapping: ${JSON.stringify(balances)}`);
+      
       // Extract clean values - handle multiple possible Kraken key formats
       // USD: Use _tradeBalance (available for trading), fallback to ZUSD
       const usdBalance = parseFloat(balances['_tradeBalance'] ?? balances['ZUSD'] ?? balances['USD'] ?? '0');
       
-      // BTC: Use XXBT first, then XBT (no BTC fallback as requested)
+      // BTC: Use XXBT first (primary Kraken code), then XBT (alternative)
       const btcBalance = parseFloat(balances['XXBT'] ?? balances['XBT'] ?? '0');
       
       const ethBalance = parseFloat(balances['XETH'] ?? balances['ETH'] ?? '0');
@@ -290,7 +340,9 @@ class KrakenService {
       const ethPrice = parseFloat(tickerData['ETHUSD']?.price || '0');
       const portfolioValueUSD = equityValue > 0 ? equityValue : usdBalance + (btcBalance * btcPrice) + (ethBalance * ethPrice);
       
-      krakenLogger.debug(`Portfolio: USD=${usdBalance}, BTC=${btcBalance}, ETH=${ethBalance}, Equity=${equityValue}, Total=${portfolioValueUSD}`);
+      // Log the final processed values
+      krakenLogger.info(`📈 Portfolio processed values: USD=${usdBalance}, BTC=${btcBalance}, ETH=${ethBalance}, Equity=${equityValue}, Total=${portfolioValueUSD}`);
+      krakenLogger.info(`🗺️ Asset mapping used: XXBT->${btcBalance}, XETH->${ethBalance}`);
       
       return {
         USD: usdBalance,
