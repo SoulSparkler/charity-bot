@@ -1,45 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '30');
+    const demoMode = searchParams.get('demo') === 'true';
 
     // LIVE MODE: Proxy to Railway backend API
     try {
       // Get sentiment data from Railway backend
-      const sentimentResponse = await fetch(`${API_BASE_URL}/api/sentiment/current`);
+      const sentimentResponse = await fetch(`${API_BASE_URL}/api/sentiment`);
       if (!sentimentResponse.ok) {
         throw new Error(`Sentiment API failed: ${sentimentResponse.status}`);
       }
       const sentimentData = await sentimentResponse.json();
-
-      // Get sentiment history data from Railway backend (placeholder for future implementation)
-      const historyResponse = await fetch(`${API_BASE_URL}/api/sentiment/history?limit=${limit}`);
       
-      const data = {
+      // Transform the Alternative.me API response to our expected format
+      const transformedData = {
         latest: {
-          fgi_value: Math.round((sentimentData.mcs || 0.5) * 100),
-          trend_score: sentimentData.trend_score || 0.15,
-          mcs: sentimentData.mcs || 0.5,
-          created_at: sentimentData.timestamp || new Date().toISOString(),
+          fgi_value: sentimentData.value || 50,
+          trend_score: 0.15, // Placeholder - would need additional calculation
+          mcs: (sentimentData.value || 50) / 100, // Convert FGI to 0-1 range for MCS
+          created_at: sentimentData.updated || new Date().toISOString(),
         },
-        history: historyResponse.ok ? (await historyResponse.json()).history || [] : [],
+        history: [], // Placeholder for historical data
         statistics: {
-          avg_fgi: sentimentData.avg_fgi || 50,
-          avg_mcs: sentimentData.avg_mcs || 0.5,
-          max_fgi: sentimentData.max_fgi || 100,
-          min_fgi: sentimentData.min_fgi || 0,
-          trend_direction: sentimentData.trend_direction || 'Neutral',
+          avg_fgi: sentimentData.value || 50,
+          avg_mcs: (sentimentData.value || 50) / 100,
+          max_fgi: sentimentData.value || 50,
+          min_fgi: sentimentData.value || 50,
+          trend_direction: sentimentData.classification || 'Neutral',
         },
         last_updated: new Date().toISOString(),
       };
 
-      return NextResponse.json(data, {
+      return NextResponse.json(transformedData, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
           'Pragma': 'no-cache',
