@@ -83,10 +83,12 @@ CREATE INDEX IF NOT EXISTS idx_trades_pair ON trades(pair);
 CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side);
 
 -- Balance snapshots table
-CREATE TABLE IF NOT EXISTS balance_snapshots (
+DROP TABLE IF EXISTS balance_snapshots CASCADE;
+CREATE TABLE balance_snapshots (
     id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMPTZ NOT NULL,
-    balances JSONB NOT NULL
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    balance NUMERIC NOT NULL,
+    type TEXT NOT NULL  -- 'start', 'daily', 'weekly', 'monthly'
 );
 
 -- Create index for balance snapshots
