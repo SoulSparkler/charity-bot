@@ -49,7 +49,7 @@ export default function BotAPage() {
         setData(botData);
       }
     } catch (error) {
-      console.error('Failed to fetch Bot A data:', error);
+      console.error('Failed to fetch Una Fémina data:', error);
     } finally {
       setLoading(false);
     }
@@ -84,7 +84,7 @@ export default function BotAPage() {
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">Bot A - Aggressive Growth Engine</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Una Fémina - Aggressive Growth Engine</h1>
           <div className="h-4 bg-gray-700 rounded w-64 mx-auto animate-pulse"></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -110,7 +110,7 @@ export default function BotAPage() {
   if (!data) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-400 text-lg">Failed to load Bot A data</p>
+        <p className="text-gray-400 text-lg">Failed to load Una Fémina data</p>
         <button 
           onClick={fetchBotAData}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -126,7 +126,7 @@ export default function BotAPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-white">Bot A - Aggressive Growth Engine</h1>
+          <h1 className="text-3xl font-bold text-white">Una Fémina - Aggressive Growth Engine</h1>
           <p className="text-gray-400 mt-2">
             Focused on rapid balance growth through aggressive trading strategies
           </p>
@@ -228,7 +228,7 @@ export default function BotAPage() {
               ${formatCurrency(data.cycle_target - data.current_balance)} remaining
             </span>
             <span className="text-gray-400">
-              {data.current_balance >= data.cycle_target ? '✅ Target Reached! Transferring to Bot B...' : '🎯 In Progress'}
+              {data.current_balance >= data.cycle_target ? '✅ Target Reached! Transferring to Vorgina...' : '🎯 In Progress'}
             </span>
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function BotAPage() {
           <div className="text-center py-8">
             <p className="text-gray-400">No trades found for today</p>
             <p className="text-sm text-gray-500 mt-2">
-              Bot A will only trade when market conditions are favorable
+              Una Fémina will only trade when market conditions are favorable
             </p>
           </div>
         ) : (

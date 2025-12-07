@@ -37,13 +37,13 @@ export default function RootLayout({
                       href="/bot-a"
                       className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                     >
-                      Bot A
+                      Una Fémina
                     </a>
                     <a
                       href="/bot-b"
                       className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                     >
-                      Bot B
+                      Vorgina
                     </a>
                     <a
                       href="/sentiment"

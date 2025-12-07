@@ -57,7 +57,7 @@ export default function BotBPage() {
         setData(botData);
       }
     } catch (error) {
-      console.error('Failed to fetch Bot B data:', error);
+      console.error('Failed to fetch Vorgina data:', error);
     } finally {
       setLoading(false);
     }
@@ -98,7 +98,7 @@ export default function BotBPage() {
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">Bot B - Donation Engine</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Vorgina - Donation Engine</h1>
           <div className="h-4 bg-gray-700 rounded w-64 mx-auto animate-pulse"></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -116,7 +116,7 @@ export default function BotBPage() {
   if (!data) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-400 text-lg">Failed to load Bot B data</p>
+        <p className="text-gray-400 text-lg">Failed to load Vorgina data</p>
         <button 
           onClick={fetchBotBData}
           className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -132,7 +132,7 @@ export default function BotBPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-white">Bot B - Donation Engine</h1>
+          <h1 className="text-3xl font-bold text-white">Vorgina - Donation Engine</h1>
           <p className="text-gray-400 mt-2">
             Conservative trading focused on generating consistent charitable donations
           </p>
@@ -226,7 +226,7 @@ export default function BotBPage() {
         </div>
         <div className="mt-4 p-4 bg-gray-800/50 rounded-lg">
           <p className="text-sm text-gray-300">
-            <strong>How it works:</strong> At the end of each month, Bot B calculates its profits and donates 50% 
+            <strong>How it works:</strong> At the end of each month, Vorgina calculates its profits and donates 50% 
             to charitable causes. The donation process is manual to ensure transparency and proper oversight.
           </p>
         </div>
@@ -348,7 +348,7 @@ export default function BotBPage() {
           <div className="text-center py-8">
             <p className="text-gray-400">No trades found for today</p>
             <p className="text-sm text-gray-500 mt-2">
-              Bot B only trades when market confidence is high (MCS ≥ 0.5)
+              Vorgina only trades when market confidence is high (MCS ≥ 0.5)
             </p>
           </div>
         ) : (
