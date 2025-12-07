@@ -1,5 +1,5 @@
 import express from 'express';
-import { testConnection, closeDatabase, getDatabaseType } from './db/db';
+import { testConnection, closeDatabase, getDatabaseType, initializeDatabase } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
 import testBalanceRoute from './routes/testBalance';
@@ -132,7 +132,12 @@ async function startServer() {
     await testConnection();
     console.log('✅ Database connection tested');
 
-    // Initialize services (non-blocking)
+    // Initialize database schema BEFORE any services that use DB
+    console.log('📦 Initializing database schema...');
+    await initializeDatabase();
+    console.log('[DB] Schema initialized');
+
+    // Initialize services (AFTER database schema is ready)
     try {
       await sentimentService.calculateMCS();
       await krakenService.getTicker(['BTCUSD', 'ETHUSD']);

@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 
-import { testConnection, closeDatabase } from './db/db';
+import { testConnection, closeDatabase, initializeDatabase } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
 
@@ -25,7 +25,12 @@ async function startWorker() {
     await testConnection();
     console.log('✅ Database connection verified');
 
-    // Initialize services
+    // Initialize database schema BEFORE any services that use DB
+    console.log('📦 Initializing database schema...');
+    await initializeDatabase();
+    console.log('[DB] Schema initialized');
+
+    // Initialize services (AFTER database schema is ready)
     try {
       await sentimentService.calculateMCS();
       await krakenService.getTicker(['BTCUSD', 'ETHUSD']);

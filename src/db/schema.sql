@@ -42,7 +42,8 @@ WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 CREATE TABLE IF NOT EXISTS sentiment_readings (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL,
-    value INTEGER NOT NULL
+    value INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Create index for sentiment readings
@@ -109,13 +110,11 @@ CREATE TABLE IF NOT EXISTS sentiment_readings_extended (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index for latest readings
-CREATE INDEX IF NOT EXISTS idx_sentiment_readings_created_at ON sentiment_readings_extended(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sentiment_readings_latest ON sentiment_readings_extended(created_at) WHERE created_at = (SELECT MAX(created_at) FROM sentiment_readings_extended);
+-- Create index for latest readings (extended)
+CREATE INDEX IF NOT EXISTS idx_sentiment_readings_ext_created_at ON sentiment_readings_extended(created_at DESC);
 
--- Create index for latest readings
+-- Create index for latest readings (simple)
 CREATE INDEX IF NOT EXISTS idx_sentiment_readings_created_at ON sentiment_readings(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sentiment_readings_latest ON sentiment_readings(created_at) WHERE created_at = (SELECT MAX(created_at) FROM sentiment_readings);
 
 -- Trade logs table
 CREATE TABLE IF NOT EXISTS trade_logs (
@@ -186,7 +185,8 @@ CREATE TABLE IF NOT EXISTS configuration (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TRIGGER IF NOT EXISTS update_configuration_updated_at
+DROP TRIGGER IF EXISTS update_configuration_updated_at ON configuration;
+CREATE TRIGGER update_configuration_updated_at
     BEFORE UPDATE ON configuration
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
