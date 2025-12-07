@@ -45,6 +45,7 @@ CREATE TABLE sentiment_readings (
     id SERIAL PRIMARY KEY,
     fgi_value INTEGER NOT NULL,
     trend_score DOUBLE PRECISION,
+    mcs DOUBLE PRECISION,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
