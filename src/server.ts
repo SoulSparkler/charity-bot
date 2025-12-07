@@ -103,6 +103,37 @@ app.get('/api/risk/status', async (_req, res) => {
   }
 });
 
+// Sentiment endpoint - Fear & Greed Index from Alternative.me
+app.get("/api/sentiment", async (req, res) => {
+  try {
+    const response = await fetch("https://api.alternative.me/fng/?limit=1&format=json");
+    
+    if (!response.ok) {
+      res.status(500).json({ error: `HTTP error! status: ${response.status}` });
+      return;
+    }
+    
+    const data = await response.json() as any;
+
+    if (!data || !data.data || !Array.isArray(data.data) || data.data.length === 0) {
+      res.status(500).json({ error: "No sentiment data available" });
+      return;
+    }
+
+    const item = data.data[0];
+
+    res.json({
+      value: item.value,
+      classification: item.value_classification,
+      timestamp: item.timestamp,
+      updated: new Date(Number(item.timestamp) * 1000),
+    });
+  } catch (err) {
+    console.error("Sentiment fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch sentiment" });
+  }
+});
+
 // Portfolio balances endpoint (clean format for dashboard)
 app.get('/api/portfolio', async (_req, res) => {
   try {
