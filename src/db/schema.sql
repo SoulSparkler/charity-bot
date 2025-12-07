@@ -39,7 +39,9 @@ SELECT 230.00, 0.00, 1, 200.00
 WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 
 -- Sentiment readings table (simple version)
-CREATE TABLE IF NOT EXISTS sentiment_readings (
+-- Drop and recreate to ensure correct schema
+DROP TABLE IF EXISTS sentiment_readings CASCADE;
+CREATE TABLE sentiment_readings (
     id SERIAL PRIMARY KEY,
     fgi_value INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
