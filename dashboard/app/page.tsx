@@ -83,11 +83,14 @@ export default function Dashboard() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
+  const [modeSwitching, setModeSwitching] = useState(false);
 
   const fetchDashboardState = async () => {
     try {
       setErrorMsg(null);
-      const response = await fetch('/api/dashboard/state', { cache: 'no-store' });
+      const endpoint = demoMode ? '/api/dashboard/state?demo=true' : '/api/dashboard/state';
+      const response = await fetch(endpoint, { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || data.success === false) {
         setErrorMsg(data.error || 'Failed to load dashboard state');
@@ -102,6 +105,13 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleDemoMode = async () => {
+    setModeSwitching(true);
+    setDemoMode(!demoMode);
+    // Data will be refreshed by the useEffect
+    setTimeout(() => setModeSwitching(false), 1000);
   };
 
   useEffect(() => {
@@ -177,16 +187,29 @@ export default function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold text-white">Charity Bot Overview</h1>
           <p className="text-gray-400 mt-2">
-            Live status from Kraken · Last updated:{' '}
+            {demoMode ? 'Demo Mode' : 'Live Mode'} · Last updated:{' '}
             {formatTimestamp(state.last_updated)}
           </p>
         </div>
-        <button
-          onClick={fetchDashboardState}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-        >
-          🔄 Refresh
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={toggleDemoMode}
+            disabled={modeSwitching}
+            className={`px-4 py-2 rounded-lg transition-colors font-medium ${
+              demoMode
+                ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            {modeSwitching ? '⏳ Switching...' : demoMode ? '🔄 Switch to Live' : '🔄 Switch to Demo'}
+          </button>
+          <button
+            onClick={fetchDashboardState}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {/* Main Stats */}

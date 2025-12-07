@@ -1,4 +1,5 @@
 import { krakenLogger } from '../utils/logger';
+import { riskEnforcer, TradeRequest } from './riskEnforcer';
 import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
 
@@ -250,9 +251,9 @@ class KrakenService {
   }
 
   /**
-   * Place an order
+   * Place an order with Risk Enforcer validation
    */
-  async placeSpotOrder(orderRequest: PlaceOrderRequest): Promise<KrakenOrder> {
+  async placeSpotOrder(orderRequest: PlaceOrderRequest & { botId?: 'A' | 'B'; reason?: string; mcs?: number }): Promise<KrakenOrder> {
     const allowRealTrading = process.env.ALLOW_REAL_TRADING === 'true';
     
     if (!allowRealTrading) {
@@ -263,12 +264,35 @@ class KrakenService {
     try {
       krakenLogger.warn('⚠️ ATTEMPTING REAL ORDER PLACEMENT - This will use real funds!');
       
+      // Create trade request for risk validation
+      const tradeRequest: TradeRequest = {
+        botId: orderRequest.botId || 'A', // Default to Bot A if not specified
+        pair: orderRequest.pair as 'BTC/USD' | 'ETH/USD',
+        side: orderRequest.side,
+        size: orderRequest.size,
+        price: orderRequest.price || 0,
+        reason: orderRequest.reason || 'Automated trading',
+        mcs: orderRequest.mcs || 0.5,
+        timestamp: new Date()
+      };
+
+      // Validate with Risk Enforcer BEFORE placing order
+      const riskValidation = await riskEnforcer.validateTrade(tradeRequest);
+      
+      if (!riskValidation.approved) {
+        krakenLogger.warn(`🚫 Trade blocked by risk controls: ${riskValidation.reason}`);
+        throw new Error(`Trade rejected by risk controls: ${riskValidation.reason}`);
+      }
+
       // Additional safety check - require explicit confirmation
       const confirmationRequired = process.env.TRADE_CONFIRMATION_REQUIRED === 'true';
       if (confirmationRequired) {
         krakenLogger.error('🚫 Real trading requires confirmation - rejecting order');
         throw new Error('Real trading requires explicit confirmation');
       }
+
+      // Log the approved trade
+      await riskEnforcer.logApprovedTrade(tradeRequest, riskValidation);
 
       const orderData: any = {
         pair: orderRequest.pair.replace('/', ''),
@@ -281,10 +305,19 @@ class KrakenService {
         orderData.price = orderRequest.price.toString();
       }
 
+      // Add client ID for tracking
+      if (orderRequest.clientId) {
+        orderData.clientid = orderRequest.clientId;
+      }
+
+      krakenLogger.info(`📤 Placing real order: Bot ${tradeRequest.botId} ${tradeRequest.side.toUpperCase()} ${tradeRequest.size} ${tradeRequest.pair} @ €${tradeRequest.price.toFixed(2)}`);
+
       const response = await this.httpClient.post('/0/private/AddOrder', orderData);
       
       if (response.data.error && response.data.error.length > 0) {
-        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
+        const errorMsg = `Kraken API error: ${response.data.error.join(', ')}`;
+        krakenLogger.error('🚫 Order placement failed:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       const orderInfo = response.data.result;
@@ -302,6 +335,8 @@ class KrakenService {
       };
 
       krakenLogger.trade('REAL', orderRequest.pair, orderRequest.side, orderRequest.size, orderRequest.price || 0, 0);
+      krakenLogger.info(`✅ Real order placed successfully: ${order.orderId}`);
+      
       return order;
       
     } catch (error) {
@@ -479,6 +514,54 @@ class KrakenService {
       realTradingEnabled: allowRealTrading,
       tradeConfirmationRequired,
     };
+  }
+
+  /**
+   * Get comprehensive risk status for monitoring
+   */
+  async getRiskStatus(): Promise<{
+    serviceStatus: any;
+    riskStatus: any;
+    emergencyStop: boolean;
+    configuration: {
+      maxPositionSize: number;
+      dailyLossLimits: { botA: number; botB: number };
+      maxOpenPositions: { botA: number; botB: number };
+    };
+  }> {
+    try {
+      const serviceStatus = this.getStatus();
+      const riskStatus = await riskEnforcer.getRiskStatus();
+
+      return {
+        serviceStatus,
+        riskStatus,
+        emergencyStop: riskStatus.emergencyStop,
+        configuration: {
+          maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE_EUR || '20'),
+          dailyLossLimits: {
+            botA: parseFloat(process.env.MAX_DAILY_LOSS_BOT_A_EUR || '100'),
+            botB: parseFloat(process.env.MAX_DAILY_LOSS_BOT_B_EUR || '50')
+          },
+          maxOpenPositions: {
+            botA: parseInt(process.env.MAX_OPEN_POSITIONS_BOT_A || '3'),
+            botB: parseInt(process.env.MAX_OPEN_POSITIONS_BOT_B || '2')
+          }
+        }
+      };
+    } catch (error) {
+      krakenLogger.error('Failed to get risk status:', error as Error);
+      return {
+        serviceStatus: this.getStatus(),
+        riskStatus: { error: 'Failed to fetch risk status' },
+        emergencyStop: false,
+        configuration: {
+          maxPositionSize: 20,
+          dailyLossLimits: { botA: 100, botB: 50 },
+          maxOpenPositions: { botA: 3, botB: 2 }
+        }
+      };
+    }
   }
 }
 

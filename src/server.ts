@@ -88,6 +88,21 @@ app.get('/api/sentiment/current', async (_req, res) => {
   }
 });
 
+// Risk status endpoint
+app.get('/api/risk/status', async (_req, res) => {
+  try {
+    const riskStatus = await krakenService.getRiskStatus();
+    
+    res.json({
+      ...riskStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting risk status:', error);
+    res.status(500).json({ error: 'Failed to get risk status' });
+  }
+});
+
 // Manual bot execution endpoints (for testing)
 app.post('/api/bots/execute', async (req, res) => {
   try {
