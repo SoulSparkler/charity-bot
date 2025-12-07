@@ -233,7 +233,7 @@ class KrakenService {
     try {
       const balances = await this.getBalances();
       
-      // Get USD value from balance
+      // Get USD value from balance (equity balance from TradeBalance)
       const usdBalance = parseFloat(balances['ZUSD'] || '0');
       
       // Get BTC and ETH prices and calculate their USD value
@@ -251,6 +251,42 @@ class KrakenService {
       
     } catch (error) {
       krakenLogger.error('Failed to calculate total USD value', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get clean portfolio balances for dashboard display
+   * Returns only user-friendly fields, no internal Kraken fields
+   */
+  async getPortfolioBalances(): Promise<{
+    USD: number;
+    BTC: number;
+    ETH: number;
+    portfolioValueUSD: number;
+  }> {
+    try {
+      const balances = await this.getBalances();
+      const tickerData = await this.getTicker(['BTCUSD', 'ETHUSD']);
+      
+      // Extract clean values
+      const usdBalance = parseFloat(balances['ZUSD'] || '0');
+      const btcBalance = parseFloat(balances['XXBT'] || '0');
+      const ethBalance = parseFloat(balances['XETH'] || '0');
+      
+      // Calculate portfolio value
+      const btcPrice = parseFloat(tickerData['BTCUSD']?.price || '0');
+      const ethPrice = parseFloat(tickerData['ETHUSD']?.price || '0');
+      const portfolioValueUSD = usdBalance + (btcBalance * btcPrice) + (ethBalance * ethPrice);
+      
+      return {
+        USD: usdBalance,
+        BTC: btcBalance,
+        ETH: ethBalance,
+        portfolioValueUSD
+      };
+    } catch (error) {
+      krakenLogger.error('Failed to get portfolio balances', error as Error);
       throw error;
     }
   }

@@ -103,6 +103,25 @@ app.get('/api/risk/status', async (_req, res) => {
   }
 });
 
+// Portfolio balances endpoint (clean format for dashboard)
+app.get('/api/portfolio', async (_req, res) => {
+  try {
+    const portfolio = await krakenService.getPortfolioBalances();
+    res.json({
+      balances: {
+        USD: portfolio.USD,
+        BTC: portfolio.BTC,
+        ETH: portfolio.ETH,
+        portfolioValueUSD: portfolio.portfolioValueUSD
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting portfolio:', error);
+    res.status(500).json({ error: 'Failed to get portfolio' });
+  }
+});
+
 // Performance data endpoint
 app.get('/api/performance', async (_req, res) => {
   try {
