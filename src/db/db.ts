@@ -43,6 +43,12 @@ function initPool() {
 initPool();
 
 export async function testConnection(): Promise<boolean> {
+  // Check if we should use mock database mode
+  if (process.env.USE_MOCK_DB === 'true') {
+    console.log("[DB] Using mock database mode");
+    return true;
+  }
+
   if (!pool) {
     console.error("[DB] Pool not initialized");
     return false;
@@ -96,6 +102,12 @@ export async function withTransaction<T>(
 }
 
 export async function initializeDatabase(): Promise<void> {
+  // Check if we should use mock database mode
+  if (process.env.USE_MOCK_DB === 'true') {
+    console.log("[DB] Skipping schema initialization in mock mode");
+    return;
+  }
+
   if (!pool) {
     throw new Error("Database pool not initialized");
   }
@@ -209,6 +221,12 @@ export async function saveSnapshot(type: string, balance: number): Promise<void>
  * Ensure a start snapshot exists, creating one if needed
  */
 export async function ensureStartSnapshot(getCurrentBalance: () => Promise<number>): Promise<number> {
+  // Check if we should use mock database mode
+  if (process.env.USE_MOCK_DB === 'true') {
+    console.log("[DB] Mock mode: using default start balance of 10000");
+    return 10000;
+  }
+
   const existing = await getSnapshot('start');
   if (existing) {
     console.log(`[DB] Start snapshot exists: ${existing.balance.toFixed(2)} from ${existing.timestamp}`);

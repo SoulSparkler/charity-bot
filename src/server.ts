@@ -33,6 +33,15 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+// API test endpoint - health check for the backend API
+app.get("/api/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend API is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Test balance endpoint
 app.use("/api/test-balance", testBalanceRoute);
 
