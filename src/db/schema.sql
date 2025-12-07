@@ -38,14 +38,80 @@ INSERT INTO bot_state (botA_virtual_usd, botB_virtual_usd, botA_cycle_number, bo
 SELECT 230.00, 0.00, 1, 200.00
 WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 
--- Sentiment readings table
+-- Sentiment readings table (simple version)
 CREATE TABLE IF NOT EXISTS sentiment_readings (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    value INTEGER NOT NULL
+);
+
+-- Create index for sentiment readings
+CREATE INDEX IF NOT EXISTS idx_sentiment_readings_timestamp ON sentiment_readings(timestamp DESC);
+
+-- Trading cycles table
+CREATE TABLE IF NOT EXISTS trading_cycles (
+    id SERIAL PRIMARY KEY,
+    cycle_number INTEGER NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ,
+    result JSONB
+);
+
+-- Create index for trading cycles
+CREATE INDEX IF NOT EXISTS idx_trading_cycles_cycle_number ON trading_cycles(cycle_number DESC);
+CREATE INDEX IF NOT EXISTS idx_trading_cycles_start_time ON trading_cycles(start_time DESC);
+
+-- Trades table
+CREATE TABLE IF NOT EXISTS trades (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    pair TEXT NOT NULL,
+    side TEXT NOT NULL,
+    price NUMERIC NOT NULL,
+    volume NUMERIC NOT NULL,
+    status TEXT NOT NULL,
+    raw_response JSONB
+);
+
+-- Create index for trades
+CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_trades_pair ON trades(pair);
+CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side);
+
+-- Balance snapshots table
+CREATE TABLE IF NOT EXISTS balance_snapshots (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    balances JSONB NOT NULL
+);
+
+-- Create index for balance snapshots
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_timestamp ON balance_snapshots(timestamp DESC);
+
+-- Donation records table
+CREATE TABLE IF NOT EXISTS donation_records (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ NOT NULL,
+    amount NUMERIC NOT NULL,
+    cause TEXT NOT NULL
+);
+
+-- Create index for donation records
+CREATE INDEX IF NOT EXISTS idx_donation_records_timestamp ON donation_records(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_donation_records_cause ON donation_records(cause);
+
+-- Sentiment readings table (extended version for advanced features)
+CREATE TABLE IF NOT EXISTS sentiment_readings_extended (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     fgi_value INTEGER NOT NULL CHECK (fgi_value >= 0 AND fgi_value <= 100),
     trend_score NUMERIC(4, 3) NOT NULL CHECK (trend_score >= -1.0 AND trend_score <= 1.0),
     mcs NUMERIC(3, 2) NOT NULL CHECK (mcs >= 0.0 AND mcs <= 1.0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create index for latest readings
+CREATE INDEX IF NOT EXISTS idx_sentiment_readings_created_at ON sentiment_readings_extended(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sentiment_readings_latest ON sentiment_readings_extended(created_at) WHERE created_at = (SELECT MAX(created_at) FROM sentiment_readings_extended);
 
 -- Create index for latest readings
 CREATE INDEX IF NOT EXISTS idx_sentiment_readings_created_at ON sentiment_readings(created_at DESC);
@@ -166,7 +232,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO postgres;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO postgres;
 
 COMMENT ON TABLE bot_state IS 'Stores virtual balances and cycle tracking for both trading bots';
-COMMENT ON TABLE sentiment_readings IS 'Market sentiment data including FGI, trend scores, and MCS values';
+COMMENT ON TABLE sentiment_readings IS 'Simple market sentiment data with timestamp and value';
+COMMENT ON TABLE sentiment_readings_extended IS 'Market sentiment data including FGI, trend scores, and MCS values';
+COMMENT ON TABLE trading_cycles IS 'Records of trading cycles with start/end times and results';
+COMMENT ON TABLE trades IS 'Complete record of all trades executed';
+COMMENT ON TABLE balance_snapshots IS 'Periodic snapshots of account balances';
+COMMENT ON TABLE donation_records IS 'Records of charitable donations made';
 COMMENT ON TABLE trade_logs IS 'Complete record of all trades executed by both bots';
 COMMENT ON TABLE monthly_reports IS 'Monthly performance reports and donation calculations';
 COMMENT ON TABLE api_rate_limits IS 'Rate limiting tracking for external API calls';
