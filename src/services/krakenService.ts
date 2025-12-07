@@ -101,7 +101,7 @@ class KrakenService {
     try {
       const nonce = Date.now() * 1000; // microseconds
       const url = new URL(config.url!, config.baseURL);
-      const path = url.pathname + url.search;
+      const path = url.pathname;
       
       // Add nonce to request data
       const postData = config.data ? { ...config.data } : {};
@@ -111,20 +111,26 @@ class KrakenService {
         Object.assign(postData, config.params);
       }
 
-      // Create message for signing
-      const message = path + this.objectToQueryString(postData);
+      // Convert to URL-encoded form data
+      const postDataString = this.objectToQueryString(postData);
       
-      // Create signature
+      // Create signature per Kraken docs:
+      // HMAC-SHA512 of (URI path + SHA256(nonce + POST data)) and target is base64 decoded secret
       const secret = Buffer.from(this.apiSecret, 'base64');
-      const hash = crypto.createHash('sha256');
-      hash.update(nonce.toString() + message);
-      const hmac = crypto.createHmac('sha512', secret);
-      hmac.update(path + hash.digest());
-      const signature = hmac.digest('base64');
+      const sha256Hash = crypto.createHash('sha256')
+        .update(nonce.toString() + postDataString)
+        .digest();
+      const signature = crypto.createHmac('sha512', secret)
+        .update(Buffer.concat([Buffer.from(path), sha256Hash]))
+        .digest('base64');
       
       // Add headers
       config.headers['API-Key'] = this.apiKey;
       config.headers['API-Sign'] = signature;
+      config.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      
+      // Replace data with URL-encoded string
+      config.data = postDataString;
       
       krakenLogger.debug(`Added auth headers for ${config.method?.toUpperCase()} ${path}`);
       
@@ -148,32 +154,74 @@ class KrakenService {
   }
 
   /**
-   * Get account balances
+   * Get account balances using TradeBalance (for Unified accounts) with BalanceEx fallback
    */
   async getBalances(): Promise<KrakenBalance> {
     try {
-      krakenLogger.info('Fetching real account balances from Kraken...');
-      const response = await this.httpClient.post('/0/private/Balance');
+      krakenLogger.info('Fetching account balances from Kraken (Unified account mode)...');
       
-      if (response.data.error && response.data.error.length > 0) {
-        throw new Error(`Kraken API error: ${response.data.error.join(', ')}`);
-      }
-
-      const balances: KrakenBalance = {};
-      const balanceData = response.data.result;
-      
-      // Convert Kraken format to our format
-      for (const [currency, amount] of Object.entries(balanceData)) {
-        if (parseFloat(amount as string) > 0) {
-          balances[currency] = amount as string;
+      // Try TradeBalance first (required for Unified accounts)
+      try {
+        const tradeBalanceResponse = await this.httpClient.post('/0/private/TradeBalance', {
+          asset: 'ZUSD'
+        });
+        
+        if (tradeBalanceResponse.data.error && tradeBalanceResponse.data.error.length > 0) {
+          throw new Error(`TradeBalance API error: ${tradeBalanceResponse.data.error.join(', ')}`);
         }
-      }
 
-      krakenLogger.info(`Retrieved ${Object.keys(balances).length} non-zero balances`);
-      return balances;
+        const tradeBalanceData = tradeBalanceResponse.data.result;
+        const balances: KrakenBalance = {};
+        
+        // Parse equity balance (eb) as the primary balance indicator
+        // eb = equivalent balance (combined balance of all currencies)
+        if (tradeBalanceData.eb) {
+          balances['ZUSD'] = tradeBalanceData.eb;
+          krakenLogger.info(`TradeBalance equity balance (eb): ${tradeBalanceData.eb} USD`);
+        }
+        
+        // Also capture other useful fields if available
+        // tb = trade balance (balance available for trading)
+        // m = margin amount of open positions
+        // n = unrealized net profit/loss of open positions
+        // e = equity = trade balance + unrealized net profit/loss
+        if (tradeBalanceData.tb) {
+          balances['_tradeBalance'] = tradeBalanceData.tb;
+        }
+        if (tradeBalanceData.e) {
+          balances['_equity'] = tradeBalanceData.e;
+        }
+
+        krakenLogger.info(`Retrieved balance via TradeBalance: ${Object.keys(balances).length} fields`);
+        return balances;
+        
+      } catch (tradeBalanceError) {
+        krakenLogger.warn(`TradeBalance failed, falling back to BalanceEx: ${(tradeBalanceError as Error).message}`);
+        
+        // Fallback to BalanceEx
+        const balanceExResponse = await this.httpClient.post('/0/private/BalanceEx');
+        
+        if (balanceExResponse.data.error && balanceExResponse.data.error.length > 0) {
+          throw new Error(`BalanceEx API error: ${balanceExResponse.data.error.join(', ')}`);
+        }
+
+        const balances: KrakenBalance = {};
+        const balanceExData = balanceExResponse.data.result;
+        
+        // BalanceEx returns extended balance info per currency
+        for (const [currency, data] of Object.entries(balanceExData)) {
+          const balanceInfo = data as { balance?: string; hold_trade?: string };
+          if (balanceInfo.balance && parseFloat(balanceInfo.balance) > 0) {
+            balances[currency] = balanceInfo.balance;
+          }
+        }
+
+        krakenLogger.info(`Retrieved ${Object.keys(balances).length} non-zero balances via BalanceEx`);
+        return balances;
+      }
       
     } catch (error) {
-      krakenLogger.error('Failed to fetch account balances', error as Error);
+      krakenLogger.error('Failed to fetch account balances (both TradeBalance and BalanceEx failed)', error as Error);
       throw error;
     }
   }
