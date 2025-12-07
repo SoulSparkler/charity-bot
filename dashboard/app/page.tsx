@@ -184,8 +184,47 @@ export default function Dashboard() {
   const connection = state.kraken.tests.connection;
   const balanceTest = state.kraken.tests.balance;
   const status = state.kraken.tests.status;
+  
+  // Parse balances directly in dashboard to ensure correct values
+  const rawBalances = state?.kraken?.tests?.balance?.balance ?? {};
+  
+  // USD Balance: Use _tradeBalance first, then ZUSD
+  const usdBalance = parseFloat(
+    rawBalances["_tradeBalance"] ??
+    rawBalances["ZUSD"] ??
+    "0"
+  );
+  
+  // BTC Balance: Use XXBT first, then XBT, then BTC
+  const btcBalance = parseFloat(
+    rawBalances["XXBT"] ??
+    rawBalances["XBT"] ??
+    rawBalances["BTC"] ??
+    "0"
+  );
+  
+  // ETH Balance (if available)
+  const ethBalance = parseFloat(
+    rawBalances["XETH"] ??
+    rawBalances["ETH"] ??
+    "0"
+  );
+  
+  // Asset count: Only count non-internal fields
+  const assetKeys = Object.keys(rawBalances).filter(
+    key => !key.startsWith("_")
+  );
+  const assetCount = assetKeys.length;
+  
+  // Create portfolio override with correct parsing
+  const portfolioOverride = {
+    USD: usdBalance,
+    BTC: btcBalance,
+    ETH: ethBalance,
+    portfolioValueUSD: usdBalance + (btcBalance * 45000) + (ethBalance * 3000) // Rough estimates
+  };
+  
   const balanceEntries = getBalanceEntries(state);
-
   const hasAssets = balanceEntries.length > 0;
 
   return (
@@ -246,13 +285,13 @@ export default function Dashboard() {
 
         <StatCard
           title="Assets on Kraken"
-          value={hasAssets ? `${balanceEntries.length} assets` : 'No assets detected'}
+          value={assetCount > 0 ? `${assetCount} assets` : 'No assets detected'}
           subtitle={
-            hasAssets
+            assetCount > 0
               ? 'Ready for strategy & donations'
               : 'Top up your account to start trading & donating'
           }
-          trend={hasAssets ? 'up' : 'neutral'}
+          trend={assetCount > 0 ? 'up' : 'neutral'}
         />
       </div>
 
@@ -261,28 +300,28 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {state.portfolio ? (
+        {state.portfolio || assetCount > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">USD Balance</p>
               <p className="text-2xl font-bold text-green-400">
-                ${state.portfolio.USD?.toFixed(2) || '0.00'}
+                ${portfolioOverride.USD.toFixed(2)}
               </p>
             </div>
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">BTC Balance</p>
               <p className="text-2xl font-bold text-orange-400">
-                {state.portfolio.BTC?.toFixed(8) || '0.00000000'} BTC
+                {portfolioOverride.BTC.toFixed(8)} BTC
               </p>
             </div>
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">Total Portfolio Value</p>
               <p className="text-2xl font-bold text-blue-400">
-                ${state.portfolio.portfolioValueUSD?.toFixed(2) || '0.00'}
+                ${portfolioOverride.portfolioValueUSD.toFixed(2)}
               </p>
             </div>
           </div>
-        ) : !hasAssets ? (
+        ) : assetCount === 0 ? (
           <p className="text-gray-400">
             Kraken reports an empty balance. Once you deposit funds, they will show up
             here and can be linked to your charity logic.
@@ -297,9 +336,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {balanceEntries
-                  .filter(([asset]) => !asset.startsWith('_')) // Hide internal fields
-                  .map(([asset, amount]) => (
+                {balanceEntries.map(([asset, amount]) => (
                   <tr key={asset} className="border-b border-gray-800">
                     <td className="py-2 pr-4 text-gray-200">
                       {asset === 'ZUSD' ? 'USD' : asset === 'XXBT' ? 'BTC' : asset === 'XETH' ? 'ETH' : asset}
