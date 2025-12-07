@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 
-import { testConnection, closeDatabase, initializeDatabase } from './db/db';
+import { testConnection, closeDatabase, initializeDatabase, ensureStartSnapshot } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
 
@@ -29,6 +29,13 @@ async function startWorker() {
     console.log('📦 Initializing database schema...');
     await initializeDatabase();
     console.log('[DB] Schema initialized');
+
+    // Ensure start snapshot exists (for P/L calculations)
+    console.log('📊 Checking start snapshot...');
+    await ensureStartSnapshot(async () => {
+      const balance = await krakenService.getTotalUSDValue();
+      return balance;
+    });
 
     // Initialize services (AFTER database schema is ready)
     try {

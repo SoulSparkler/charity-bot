@@ -111,6 +111,61 @@ export async function initializeDatabase(): Promise<void> {
   }
 }
 
+/**
+ * Get a balance snapshot by type
+ */
+export async function getSnapshot(type: string): Promise<{ balance: number; timestamp: Date } | null> {
+  try {
+    const result = await query(
+      "SELECT balance, timestamp FROM balance_snapshots WHERE type = $1 ORDER BY timestamp DESC LIMIT 1",
+      [type]
+    );
+    if (result.rows.length > 0) {
+      return {
+        balance: parseFloat(result.rows[0].balance),
+        timestamp: result.rows[0].timestamp
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`[DB] Failed to get ${type} snapshot:`, error);
+    return null;
+  }
+}
+
+/**
+ * Save a balance snapshot
+ */
+export async function saveSnapshot(type: string, balance: number): Promise<void> {
+  try {
+    await query(
+      "INSERT INTO balance_snapshots (balance, type) VALUES ($1, $2)",
+      [balance, type]
+    );
+    console.log(`[DB] Saved ${type} snapshot: ${balance.toFixed(2)}`);
+  } catch (error) {
+    console.error(`[DB] Failed to save ${type} snapshot:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Ensure a start snapshot exists, creating one if needed
+ */
+export async function ensureStartSnapshot(getCurrentBalance: () => Promise<number>): Promise<number> {
+  const existing = await getSnapshot('start');
+  if (existing) {
+    console.log(`[DB] Start snapshot exists: ${existing.balance.toFixed(2)} from ${existing.timestamp}`);
+    return existing.balance;
+  }
+  
+  // No start snapshot exists, create one
+  const currentBalance = await getCurrentBalance();
+  await saveSnapshot('start', currentBalance);
+  console.log(`[DB] Created initial start snapshot: ${currentBalance.toFixed(2)}`);
+  return currentBalance;
+}
+
 export async function healthCheck(): Promise<{
   status: string;
   timestamp: string;
