@@ -41,13 +41,12 @@ WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 -- Sentiment readings table (simple version)
 CREATE TABLE IF NOT EXISTS sentiment_readings (
     id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMPTZ NOT NULL,
-    value INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    fgi_value INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Create index for sentiment readings
-CREATE INDEX IF NOT EXISTS idx_sentiment_readings_timestamp ON sentiment_readings(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_sentiment_readings_created_at ON sentiment_readings(created_at DESC);
 
 -- Trading cycles table
 CREATE TABLE IF NOT EXISTS trading_cycles (
