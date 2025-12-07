@@ -139,7 +139,7 @@ export default function Dashboard() {
   const getBalanceEntries = (state: DashboardState | null) => {
     const balance =
       state?.kraken?.tests?.balance?.balance ?? ({} as Record<string, string>);
-    return Object.entries(balance);
+    return Object.entries(balance).filter(([asset]) => !asset.startsWith('_'));
   };
 
   if (loading) {
