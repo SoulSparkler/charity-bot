@@ -46,6 +46,15 @@ function SimpleChart({ data, width = 600, height = 200 }: SimpleChartProps) {
   // Process data for the chart (last 30 points for better visualization)
   const processedData = data.slice(0, 30).reverse();
   
+  // Handle empty data case
+  if (processedData.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-48 bg-gray-800 rounded-lg">
+        <p className="text-gray-400">No historical data available</p>
+      </div>
+    );
+  }
+  
   const fgiValues = processedData.map(d => d.fgi_value);
   const mcsValues = processedData.map(d => d.mcs * 100); // Scale MCS to 0-100 for visualization
 
@@ -176,13 +185,29 @@ export default function SentimentPage() {
 
   const fetchSentimentData = async () => {
     try {
+      console.log('🔍 Frontend: Fetching sentiment data...');
       const response = await fetch(`/api/dashboard/sentiment?demo=${demoMode}`);
-      if (response.ok) {
-        const sentimentData = await response.json();
-        setData(sentimentData);
+      console.log(`📡 Frontend: Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Frontend: API error:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
+      
+      const sentimentData = await response.json();
+      console.log('📊 Frontend: Received data:', sentimentData);
+      
+      // Validate data structure
+      if (!sentimentData || !sentimentData.latest) {
+        console.error('❌ Frontend: Invalid data structure:', sentimentData);
+        throw new Error('Invalid data structure received');
+      }
+      
+      setData(sentimentData);
+      console.log('✅ Frontend: Data set successfully');
     } catch (error) {
-      console.error('Failed to fetch sentiment data:', error);
+      console.error('❌ Frontend: Failed to fetch sentiment data:', error);
     } finally {
       setLoading(false);
     }

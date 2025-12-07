@@ -9,33 +9,57 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const demoMode = searchParams.get('demo') === 'true';
 
+    console.log(`🔍 Sentiment API Debug - Backend URL: ${API_BASE_URL}/api/sentiment`);
+
     // LIVE MODE: Proxy to Railway backend API
     try {
       // Get sentiment data from Railway backend
       const sentimentResponse = await fetch(`${API_BASE_URL}/api/sentiment`);
+      
+      console.log(`📡 Sentiment API Response Status: ${sentimentResponse.status}`);
+      console.log(`📡 Sentiment API Response Headers:`, sentimentResponse.headers);
+      
       if (!sentimentResponse.ok) {
-        throw new Error(`Sentiment API failed: ${sentimentResponse.status}`);
+        const errorText = await sentimentResponse.text();
+        console.error(`❌ Sentiment API failed: ${sentimentResponse.status}`, errorText);
+        throw new Error(`Sentiment API failed: ${sentimentResponse.status} - ${errorText}`);
       }
-      const sentimentData = await sentimentResponse.json();
+      
+      let sentimentData;
+      try {
+        sentimentData = await sentimentResponse.json();
+        console.log(`📊 Raw sentiment data:`, sentimentData);
+      } catch (parseError) {
+        const responseText = await sentimentResponse.text();
+        console.error(`❌ JSON parse error:`, parseError);
+        console.error(`❌ Response text:`, responseText);
+        throw new Error(`Failed to parse JSON response: ${responseText}`);
+      }
+      
+      // Ensure value is a number, not a string
+      const fgiValue = parseInt(sentimentData.value, 10) || 50;
+      console.log(`🔢 Converted FGI value: ${sentimentData.value} -> ${fgiValue}`);
       
       // Transform the Alternative.me API response to our expected format
       const transformedData = {
         latest: {
-          fgi_value: sentimentData.value || 50,
+          fgi_value: fgiValue,
           trend_score: 0.15, // Placeholder - would need additional calculation
-          mcs: (sentimentData.value || 50) / 100, // Convert FGI to 0-1 range for MCS
+          mcs: fgiValue / 100, // Convert FGI to 0-1 range for MCS
           created_at: sentimentData.updated || new Date().toISOString(),
         },
         history: [], // Placeholder for historical data
         statistics: {
-          avg_fgi: sentimentData.value || 50,
-          avg_mcs: (sentimentData.value || 50) / 100,
-          max_fgi: sentimentData.value || 50,
-          min_fgi: sentimentData.value || 50,
+          avg_fgi: fgiValue,
+          avg_mcs: fgiValue / 100,
+          max_fgi: fgiValue,
+          min_fgi: fgiValue,
           trend_direction: sentimentData.classification || 'Neutral',
         },
         last_updated: new Date().toISOString(),
       };
+      
+      console.log(`✅ Transformed data:`, transformedData);
 
       return NextResponse.json(transformedData, {
         headers: {
