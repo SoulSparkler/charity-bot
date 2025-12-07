@@ -44,6 +44,7 @@ DROP TABLE IF EXISTS sentiment_readings CASCADE;
 CREATE TABLE sentiment_readings (
     id SERIAL PRIMARY KEY,
     fgi_value INTEGER NOT NULL,
+    trend_score DOUBLE PRECISION,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
