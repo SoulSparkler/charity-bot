@@ -4,7 +4,7 @@
   "description": "Charity trading bot with sentiment analysis and dual-engine system",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').mkdirSync('dist/db', {recursive: true})\" && node -e \"require('fs').copyFileSync('src/db/schema.sql', 'dist/db/schema.sql')\"",
     "dev": "concurrently \"npm run dev:worker\" \"npm run dev:server\"",
     "dev:server": "ts-node src/server.ts",
     "dev:worker": "ts-node src/worker.ts",
