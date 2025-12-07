@@ -139,7 +139,7 @@ export default function Dashboard() {
   const getBalanceEntries = (state: DashboardState | null) => {
     const balance =
       state?.kraken?.tests?.balance?.balance ?? ({} as Record<string, string>);
-    return Object.entries(balance); // Show ALL balance fields including _tradeBalance, _equity
+    return Object.entries(balance).filter(([asset]) => !asset.startsWith('_')); // Show only real assets in table
   };
 
   if (loading) {
@@ -199,11 +199,10 @@ export default function Dashboard() {
     "0"
   );
   
-  // BTC Balance: Use XXBT first, then XBT, then BTC
+  // BTC Balance: Kraken uses XXBT format, prioritize XXBT first
   const btcBalance = parseFloat(
     rawBalances["XXBT"] ??
     rawBalances["XBT"] ??
-    rawBalances["BTC"] ??
     "0"
   );
   
@@ -214,8 +213,8 @@ export default function Dashboard() {
     "0"
   );
   
-  // Asset count: Count all balance fields including _tradeBalance, _equity, etc.
-  const assetKeys = Object.keys(rawBalances);
+  // Asset count: Only count real assets (not Unified Account internal fields)
+  const assetKeys = Object.keys(rawBalances).filter(key => !key.startsWith("_"));
   const assetCount = assetKeys.length;
   
   // Debug: Log the parsed values
@@ -229,9 +228,8 @@ export default function Dashboard() {
   
   // Get balance entries for table display (showing raw Kraken data format)
   const balanceEntries = getBalanceEntries(state);
-  const hasAssets = balanceEntries.length > 0;
   
-  // Use portfolioOverride only for clean display when we have data
+  // Use portfolioOverride only for clean display when we have real assets (not just Unified Account fields)
   const portfolioOverride = {
     USD: usdBalance,
     BTC: btcBalance,
@@ -312,7 +310,7 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {hasAssets ? (
+        {assetCount > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">USD Balance</p>
