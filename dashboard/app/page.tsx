@@ -226,6 +226,14 @@ export default function Dashboard() {
     assetKeys
   });
   
+  // Debug: Log portfolio data usage
+  console.log('📊 Portfolio data usage:', {
+    hasPortfolioData: !!state.portfolio,
+    portfolioUSD: state.portfolio?.USD,
+    portfolioBTC: state.portfolio?.BTC,
+    usingPortfolioData: !!state.portfolio
+  });
+  
   // Get balance entries for table display (showing raw Kraken data format)
   const balanceEntries = getBalanceEntries(state);
   
@@ -310,24 +318,24 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {assetCount > 0 ? (
+        {(state.portfolio || assetCount > 0) ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">USD Balance</p>
               <p className="text-2xl font-bold text-green-400">
-                ${portfolioOverride.USD.toFixed(2)}
+                ${state.portfolio ? state.portfolio.USD.toFixed(2) : portfolioOverride.USD.toFixed(2)}
               </p>
             </div>
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">BTC Balance</p>
               <p className="text-2xl font-bold text-orange-400">
-                {portfolioOverride.BTC.toFixed(8)} BTC
+                {state.portfolio ? state.portfolio.BTC.toFixed(8) : portfolioOverride.BTC.toFixed(8)} BTC
               </p>
             </div>
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">Total Portfolio Value</p>
               <p className="text-2xl font-bold text-blue-400">
-                ${portfolioOverride.portfolioValueUSD.toFixed(2)}
+                ${state.portfolio ? state.portfolio.portfolioValueUSD.toFixed(2) : portfolioOverride.portfolioValueUSD.toFixed(2)}
               </p>
             </div>
           </div>
