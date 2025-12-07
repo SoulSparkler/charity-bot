@@ -33,10 +33,18 @@ interface KrakenResponse {
   [key: string]: any;
 }
 
+interface PortfolioBalances {
+  USD: number;
+  BTC: number;
+  ETH?: number;
+  portfolioValueUSD: number;
+}
+
 interface DashboardState {
   success: boolean;
   last_updated: string;
   kraken: KrakenResponse;
+  portfolio?: PortfolioBalances | null;
 }
 
 interface StatCardProps {
@@ -248,12 +256,33 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Asset list */}
+      {/* Portfolio Balances - Clean Display */}
       <div className="rounded-lg p-6 bg-gray-800 border border-gray-700">
         <h3 className="text-lg font-semibold text-white mb-4">
-          Portfolio Balances (Raw from Kraken)
+          Portfolio Balances
         </h3>
-        {!hasAssets ? (
+        {state.portfolio ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-700 rounded-lg p-4">
+              <p className="text-gray-400 text-sm">USD Balance</p>
+              <p className="text-2xl font-bold text-green-400">
+                ${state.portfolio.USD?.toFixed(2) || '0.00'}
+              </p>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <p className="text-gray-400 text-sm">BTC Balance</p>
+              <p className="text-2xl font-bold text-orange-400">
+                {state.portfolio.BTC?.toFixed(8) || '0.00000000'} BTC
+              </p>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <p className="text-gray-400 text-sm">Total Portfolio Value</p>
+              <p className="text-2xl font-bold text-blue-400">
+                ${state.portfolio.portfolioValueUSD?.toFixed(2) || '0.00'}
+              </p>
+            </div>
+          </div>
+        ) : !hasAssets ? (
           <p className="text-gray-400">
             Kraken reports an empty balance. Once you deposit funds, they will show up
             here and can be linked to your charity logic.
@@ -268,9 +297,13 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {balanceEntries.map(([asset, amount]) => (
+                {balanceEntries
+                  .filter(([asset]) => !asset.startsWith('_')) // Hide internal fields
+                  .map(([asset, amount]) => (
                   <tr key={asset} className="border-b border-gray-800">
-                    <td className="py-2 pr-4 text-gray-200">{asset}</td>
+                    <td className="py-2 pr-4 text-gray-200">
+                      {asset === 'ZUSD' ? 'USD' : asset === 'XXBT' ? 'BTC' : asset === 'XETH' ? 'ETH' : asset}
+                    </td>
                     <td className="py-2 text-right text-gray-100">{amount}</td>
                   </tr>
                 ))}

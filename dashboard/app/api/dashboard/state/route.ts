@@ -16,31 +16,46 @@ export async function GET(_request: NextRequest) {
       );
     }
 
-    const res = await fetch(`${backendUrl}/api/test-balance`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store'
-    });
+    // Fetch both test-balance and portfolio data
+    const [testBalanceRes, portfolioRes] = await Promise.all([
+      fetch(`${backendUrl}/api/test-balance`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store'
+      }),
+      fetch(`${backendUrl}/api/portfolio`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store'
+      }).catch(() => null) // Don't fail if portfolio endpoint doesn't exist
+    ]);
 
-    if (!res.ok) {
-      const text = await res.text();
+    if (!testBalanceRes.ok) {
+      const text = await testBalanceRes.text();
       return NextResponse.json(
         {
           success: false,
-          error: `Backend /api/test-balance failed with status ${res.status}`,
+          error: `Backend /api/test-balance failed with status ${testBalanceRes.status}`,
           body: text
         },
         { status: 500 }
       );
     }
 
-    const krakenData = await res.json();
+    const krakenData = await testBalanceRes.json();
+    
+    // Get clean portfolio data if available
+    let portfolio = null;
+    if (portfolioRes && portfolioRes.ok) {
+      portfolio = await portfolioRes.json();
+    }
 
     return NextResponse.json(
       {
         success: true,
         last_updated: new Date().toISOString(),
-        kraken: krakenData
+        kraken: krakenData,
+        portfolio: portfolio?.balances || null
       },
       {
         headers: {
