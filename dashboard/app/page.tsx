@@ -139,7 +139,7 @@ export default function Dashboard() {
   const getBalanceEntries = (state: DashboardState | null) => {
     const balance =
       state?.kraken?.tests?.balance?.balance ?? ({} as Record<string, string>);
-    return Object.entries(balance).filter(([asset]) => !asset.startsWith('_'));
+    return Object.entries(balance); // Show ALL balance fields including _tradeBalance, _equity
   };
 
   if (loading) {
@@ -214,10 +214,8 @@ export default function Dashboard() {
     "0"
   );
   
-  // Asset count: Only count non-internal fields
-  const assetKeys = Object.keys(rawBalances).filter(
-    key => !key.startsWith("_")
-  );
+  // Asset count: Count all balance fields including _tradeBalance, _equity, etc.
+  const assetKeys = Object.keys(rawBalances);
   const assetCount = assetKeys.length;
   
   // Debug: Log the parsed values
@@ -229,25 +227,17 @@ export default function Dashboard() {
     assetKeys
   });
   
-  // Create portfolio override with correct parsing
-  // Prioritize state.portfolio (from backend) over direct parsing
-  console.log('🔍 state.portfolio:', state.portfolio);
-  console.log('🔍 rawBalances from balance API:', rawBalances);
+  // Get balance entries for table display (showing raw Kraken data format)
+  const balanceEntries = getBalanceEntries(state);
+  const hasAssets = balanceEntries.length > 0;
   
-  const portfolioOverride = state.portfolio ? {
-    USD: state.portfolio.USD,
-    BTC: state.portfolio.BTC,
-    ETH: state.portfolio.ETH || 0,
-    portfolioValueUSD: state.portfolio.portfolioValueUSD
-  } : {
+  // Use portfolioOverride only for clean display when we have data
+  const portfolioOverride = {
     USD: usdBalance,
     BTC: btcBalance,
     ETH: ethBalance,
     portfolioValueUSD: usdBalance + (btcBalance * 45000) + (ethBalance * 3000) // Rough estimates
   };
-  
-  const balanceEntries = getBalanceEntries(state);
-  const hasAssets = balanceEntries.length > 0;
 
   return (
     <div className="space-y-6">
@@ -322,7 +312,7 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {(assetCount > 0 || state.portfolio) ? (
+        {hasAssets ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">USD Balance</p>
@@ -343,7 +333,7 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-        ) : (!state.portfolio && assetCount === 0) ? (
+        ) : assetCount === 0 ? (
           <p className="text-gray-400">
             Kraken reports an empty balance. Once you deposit funds, they will show up
             here and can be linked to your charity logic.
@@ -361,7 +351,7 @@ export default function Dashboard() {
                 {balanceEntries.map(([asset, amount]) => (
                   <tr key={asset} className="border-b border-gray-800">
                     <td className="py-2 pr-4 text-gray-200">
-                      {asset === 'ZUSD' ? 'USD' : asset === 'XXBT' ? 'BTC' : asset === 'XETH' ? 'ETH' : asset}
+                      {asset}
                     </td>
                     <td className="py-2 text-right text-gray-100">{amount}</td>
                   </tr>
