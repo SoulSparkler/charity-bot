@@ -1,8 +1,9 @@
 #!/usr/bin/env ts-node
 
-import { testConnection, closeDatabase, initializeDatabase, ensureStartSnapshot } from './db/db';
+import { testConnection, closeDatabase, initializeDatabase, ensureStartSnapshot, saveSnapshot } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
+import cron from 'node-cron';
 
 // Load environment variables
 import dotenv from 'dotenv';
@@ -87,11 +88,46 @@ async function startWorker() {
       }
     }, 2 * 60 * 1000); // 2 minutes
 
+    // Schedule balance snapshots for performance tracking
+    // Daily snapshot at 00:00 UTC
+    cron.schedule('0 0 * * *', async () => {
+      try {
+        console.log('📸 Taking daily balance snapshot...');
+        const balance = await krakenService.getTotalUSDValue();
+        await saveSnapshot('daily', balance);
+      } catch (error) {
+        console.error('❌ Daily snapshot failed:', error);
+      }
+    }, { timezone: 'UTC' });
+
+    // Weekly snapshot every Monday at 00:00 UTC
+    cron.schedule('0 0 * * 1', async () => {
+      try {
+        console.log('📸 Taking weekly balance snapshot...');
+        const balance = await krakenService.getTotalUSDValue();
+        await saveSnapshot('weekly', balance);
+      } catch (error) {
+        console.error('❌ Weekly snapshot failed:', error);
+      }
+    }, { timezone: 'UTC' });
+
+    // Monthly snapshot on 1st of each month at 00:00 UTC
+    cron.schedule('0 0 1 * *', async () => {
+      try {
+        console.log('📸 Taking monthly balance snapshot...');
+        const balance = await krakenService.getTotalUSDValue();
+        await saveSnapshot('monthly', balance);
+      } catch (error) {
+        console.error('❌ Monthly snapshot failed:', error);
+      }
+    }, { timezone: 'UTC' });
+
     console.log('🤖 Worker service started successfully');
     console.log('📅 Bot A: Every 5 minutes');
     console.log('📅 Bot B: Every 15 minutes');
     console.log('📊 Sentiment: Every hour');
     console.log('📈 Market data: Every 2 minutes');
+    console.log('📸 Snapshots: Daily/Weekly/Monthly at 00:00 UTC');
     console.log('⏰ Worker is now monitoring and trading automatically');
 
   } catch (error) {

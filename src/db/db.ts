@@ -134,15 +134,71 @@ export async function getSnapshot(type: string): Promise<{ balance: number; time
 }
 
 /**
- * Save a balance snapshot
+ * Get the period key for snapshot deduplication
+ */
+function getSnapshotPeriodKey(type: string): string {
+  const now = new Date();
+  switch (type) {
+    case 'daily':
+      return now.toISOString().split('T')[0]; // YYYY-MM-DD
+    case 'weekly':
+      // Get Monday of current week
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(now);
+      monday.setDate(diff);
+      return monday.toISOString().split('T')[0];
+    case 'monthly':
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    default:
+      return now.toISOString().split('T')[0];
+  }
+}
+
+/**
+ * Save a balance snapshot (upsert - update if exists for period, insert if not)
  */
 export async function saveSnapshot(type: string, balance: number): Promise<void> {
   try {
-    await query(
-      "INSERT INTO balance_snapshots (balance, type) VALUES ($1, $2)",
-      [balance, type]
+    // For 'start' type, only insert if none exists
+    if (type === 'start') {
+      const existing = await getSnapshot('start');
+      if (existing) {
+        console.log(`[DB] Start snapshot already exists, skipping`);
+        return;
+      }
+      await query(
+        "INSERT INTO balance_snapshots (balance, type) VALUES ($1, $2)",
+        [balance, type]
+      );
+      console.log(`[DB] Saved ${type} snapshot: ${balance.toFixed(2)}`);
+      return;
+    }
+
+    // For daily/weekly/monthly, check if one exists for current period
+    const periodKey = getSnapshotPeriodKey(type);
+    const existingForPeriod = await query(
+      `SELECT id FROM balance_snapshots 
+       WHERE type = $1 AND DATE(timestamp) = DATE($2)`,
+      [type, periodKey]
     );
-    console.log(`[DB] Saved ${type} snapshot: ${balance.toFixed(2)}`);
+
+    if (existingForPeriod.rows.length > 0) {
+      // Update existing snapshot
+      await query(
+        `UPDATE balance_snapshots SET balance = $1, timestamp = NOW() 
+         WHERE type = $2 AND DATE(timestamp) = DATE($3)`,
+        [balance, type, periodKey]
+      );
+      console.log(`[DB] Updated ${type} snapshot: ${balance.toFixed(2)}`);
+    } else {
+      // Insert new snapshot
+      await query(
+        "INSERT INTO balance_snapshots (balance, type) VALUES ($1, $2)",
+        [balance, type]
+      );
+      console.log(`[DB] Saved ${type} snapshot: ${balance.toFixed(2)}`);
+    }
   } catch (error) {
     console.error(`[DB] Failed to save ${type} snapshot:`, error);
     throw error;
