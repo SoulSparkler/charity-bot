@@ -188,6 +188,10 @@ export default function Dashboard() {
   // Parse balances directly in dashboard to ensure correct values
   const rawBalances = state?.kraken?.tests?.balance?.balance ?? {};
   
+  // Debug: Log the raw balances to see what's available
+  console.log('🔍 Raw balances from API:', rawBalances);
+  console.log('🔍 Available balance keys:', Object.keys(rawBalances));
+  
   // USD Balance: Use _tradeBalance first, then ZUSD
   const usdBalance = parseFloat(
     rawBalances["_tradeBalance"] ??
@@ -216,8 +220,26 @@ export default function Dashboard() {
   );
   const assetCount = assetKeys.length;
   
+  // Debug: Log the parsed values
+  console.log('💰 Parsed values:', {
+    usdBalance,
+    btcBalance,
+    ethBalance,
+    assetCount,
+    assetKeys
+  });
+  
   // Create portfolio override with correct parsing
-  const portfolioOverride = {
+  // Prioritize state.portfolio (from backend) over direct parsing
+  console.log('🔍 state.portfolio:', state.portfolio);
+  console.log('🔍 rawBalances from balance API:', rawBalances);
+  
+  const portfolioOverride = state.portfolio ? {
+    USD: state.portfolio.USD,
+    BTC: state.portfolio.BTC,
+    ETH: state.portfolio.ETH || 0,
+    portfolioValueUSD: state.portfolio.portfolioValueUSD
+  } : {
     USD: usdBalance,
     BTC: btcBalance,
     ETH: ethBalance,
@@ -300,7 +322,7 @@ export default function Dashboard() {
         <h3 className="text-lg font-semibold text-white mb-4">
           Portfolio Balances
         </h3>
-        {state.portfolio || assetCount > 0 ? (
+        {(assetCount > 0 || state.portfolio) ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-700 rounded-lg p-4">
               <p className="text-gray-400 text-sm">USD Balance</p>
@@ -321,7 +343,7 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-        ) : assetCount === 0 ? (
+        ) : (!state.portfolio && assetCount === 0) ? (
           <p className="text-gray-400">
             Kraken reports an empty balance. Once you deposit funds, they will show up
             here and can be linked to your charity logic.
