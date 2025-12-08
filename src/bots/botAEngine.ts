@@ -4,6 +4,15 @@ import { sentimentService } from '../services/sentimentService';
 import { riskEngine, RiskAssessment } from '../services/riskEngine';
 import { botALogger } from '../utils/logger';
 
+// Environment configuration for Bot A
+const TRADE_AMOUNT_USD = parseFloat(process.env.BOT_A_TRADE_AMOUNT_USD || process.env.TRADE_AMOUNT_USD || '25');
+const MAX_TRADE_AMOUNT_USD = 25; // Hard cap at $25 per trade
+const MAX_OPEN_POSITIONS = parseInt(process.env.MAX_OPEN_POSITIONS_BOT_A || '3');
+const MAX_DAILY_LOSS = parseFloat(process.env.MAX_DAILY_LOSS_BOT_A || '100');
+const MIN_MCS_THRESHOLD = parseFloat(process.env.BOT_A_MIN_MCS || '0.4');
+const ALLOW_REAL_TRADING = process.env.ALLOW_REAL_TRADING === 'true';
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
+
 export interface BotAState {
   id: string;
   botA_virtual_usd: number;
@@ -20,12 +29,18 @@ export interface BotATrade {
   entry_price: number;
   exit_price?: number;
   pnl_usd: number;
+  usdAmount?: number;
+  reason?: string;
 }
 
 class BotAEngine {
-  private readonly MIN_MCS_FOR_TRADING = 0.4;
+  private readonly MIN_MCS_FOR_TRADING = MIN_MCS_THRESHOLD;
   private readonly CYCLE_SEED_AMOUNT = 30; // USD that remains for next cycle
   private readonly TRANSFER_TO_B = 200; // USD transferred to Bot B when target hit
+  private dailyLoss = 0;
+  private lastDailyReset = new Date();
+  private openPositions = 0;
+  private tradesThisCycle = 0;
 
 
   /**
@@ -33,13 +48,34 @@ class BotAEngine {
    */
   async runBotAOnce(): Promise<{ success: boolean; message: string; trades?: BotATrade[] }> {
     try {
-      botALogger.info('Starting Bot A execution cycle');
+      // Check if real trading is enabled
+      if (!ALLOW_REAL_TRADING || DEMO_MODE) {
+        botALogger.info('Bot A: Real trading disabled (ALLOW_REAL_TRADING=false or DEMO_MODE=true)');
+        return { success: true, message: 'Real trading disabled' };
+      }
+
+      botALogger.info('Starting Bot A execution cycle (REAL TRADING MODE)');
+
+      // Reset daily loss counter if new day
+      this.checkDailyReset();
+
+      // Check daily loss limit
+      if (this.dailyLoss >= MAX_DAILY_LOSS) {
+        botALogger.info(`Daily loss limit reached: ${this.dailyLoss.toFixed(2)} >= ${MAX_DAILY_LOSS}`);
+        return { success: true, message: `Daily loss limit reached: ${this.dailyLoss.toFixed(2)}` };
+      }
+
+      // Check max open positions
+      if (this.openPositions >= MAX_OPEN_POSITIONS) {
+        botALogger.info(`Max open positions reached: ${this.openPositions} >= ${MAX_OPEN_POSITIONS}`);
+        return { success: true, message: `Max open positions reached: ${this.openPositions}` };
+      }
 
       // Load current state
       const state = await this.getBotAState();
-      botALogger.info(`Current state - Balance: $${state.botA_virtual_usd}, Cycle: ${state.botA_cycle_number}, Target: $${state.botA_cycle_target}`);
+      botALogger.info(`Current state - Balance: ${state.botA_virtual_usd}, Cycle: ${state.botA_cycle_number}, Target: ${state.botA_cycle_target}`);
 
-      // Check if trading is allowed
+      // Check if trading is allowed based on MCS
       const mcs = await sentimentService.getLatestMCS();
       if (mcs < this.MIN_MCS_FOR_TRADING) {
         botALogger.info(`MCS too low for trading: ${mcs.toFixed(3)} < ${this.MIN_MCS_FOR_TRADING}`);
@@ -54,44 +90,56 @@ class BotAEngine {
         await this.handleCycleCompletion(state);
         return { 
           success: true, 
-          message: `Cycle ${state.botA_cycle_number} completed. Target: $${state.botA_cycle_target} reached.` 
+          message: `Cycle ${state.botA_cycle_number} completed. Target: ${state.botA_cycle_target} reached.` 
         };
       }
 
-      // Generate trading signals
+      // Generate trading signals (one trade per cycle)
       const signals = await this.generateTradingSignals();
       if (signals.length === 0) {
         botALogger.info('No trading signals generated');
         return { success: true, message: 'No trading signals' };
       }
 
-      // Execute trades
+      // Execute only ONE trade per cycle (safety rule)
       const executedTrades: BotATrade[] = [];
-      
-      for (const signal of signals) {
-        try {
-          const trade = await this.executeTrade(signal, state, riskAssessment);
-          if (trade) {
-            executedTrades.push(trade);
-          }
-        } catch (error) {
-          botALogger.error(`Failed to execute trade for ${signal.pair}`, error as Error);
+      const signal = signals[0]; // Take only the first signal
+
+      try {
+        const trade = await this.executeRealTrade(signal, state, riskAssessment);
+        if (trade) {
+          executedTrades.push(trade);
+          this.tradesThisCycle++;
         }
+      } catch (error) {
+        botALogger.error(`Failed to execute trade for ${signal.pair}`, error as Error);
       }
 
       if (executedTrades.length > 0) {
-        botALogger.info(`Executed ${executedTrades.length} trades`);
+        botALogger.info(`Executed ${executedTrades.length} trade(s) this cycle`);
       }
 
       return { 
         success: true, 
-        message: `Bot A executed ${executedTrades.length} trades`,
+        message: `Bot A executed ${executedTrades.length} trade(s)`,
         trades: executedTrades 
       };
 
     } catch (error) {
       botALogger.error('Bot A execution failed', error as Error);
       return { success: false, message: 'Bot A execution failed' };
+    }
+  }
+
+  /**
+   * Check and reset daily loss counter if new day
+   */
+  private checkDailyReset(): void {
+    const now = new Date();
+    if (now.toDateString() !== this.lastDailyReset.toDateString()) {
+      botALogger.info('New day detected - resetting daily loss counter');
+      this.dailyLoss = 0;
+      this.lastDailyReset = now;
     }
   }
 
@@ -165,7 +213,7 @@ class BotAEngine {
       );
 
       if (positionSize < 10) { // Minimum $10 trade
-        botALogger.debug(`Position size too small: $${positionSize.toFixed(2)}`);
+        botALogger.debug(`Position size too small: ${positionSize.toFixed(2)}`);
         return null;
       }
 
@@ -199,6 +247,109 @@ class BotAEngine {
 
     } catch (error) {
       botALogger.error(`Failed to execute trade for ${signal.pair}`, error as Error);
+      return null;
+    }
+  }
+
+  /**
+   * Execute a REAL trade on Kraken with safety checks and detailed logging
+   */
+  private async executeRealTrade(
+    signal: { pair: 'BTC/USD' | 'ETH/USD'; side: 'buy' | 'sell'; confidence: number },
+    state: BotAState,
+    riskAssessment: RiskAssessment
+  ): Promise<BotATrade | null> {
+    const reason = `MCS signal: ${signal.confidence.toFixed(2)} confidence`;
+    
+    try {
+      // Get current price
+      const tickerData = await krakenService.getTicker([signal.pair.replace('/', '')]);
+      const pairKey = signal.pair.replace('/', '').toUpperCase();
+      const currentPrice = parseFloat(tickerData[pairKey].price);
+
+      if (!currentPrice || currentPrice <= 0) {
+        throw new Error(`Invalid price for ${signal.pair}: ${currentPrice}`);
+      }
+
+      // Calculate USD amount (capped at MAX_TRADE_AMOUNT_USD)
+      const requestedAmount = Math.min(TRADE_AMOUNT_USD, MAX_TRADE_AMOUNT_USD);
+      const usdAmount = Math.min(requestedAmount, state.botA_virtual_usd * 0.5); // Max 50% of balance per trade
+
+      if (usdAmount < 10) {
+        botALogger.info(`Trade amount too small: ${usdAmount.toFixed(2)} (min $10)`);
+        return null;
+      }
+
+      // Calculate volume (crypto amount)
+      const volume = usdAmount / currentPrice;
+
+      // Log trade details BEFORE execution
+      botALogger.info('═══════════════════════════════════════════════════════════');
+      botALogger.info('🔄 EXECUTING REAL TRADE');
+      botALogger.info(`   Pair: ${signal.pair}`);
+      botALogger.info(`   Side: ${signal.side.toUpperCase()}`);
+      botALogger.info(`   USD Amount: ${usdAmount.toFixed(2)}`);
+      botALogger.info(`   Volume: ${volume.toFixed(8)}`);
+      botALogger.info(`   Current Price: ${currentPrice.toFixed(2)}`);
+      botALogger.info(`   Reason: ${reason}`);
+      botALogger.info('═══════════════════════════════════════════════════════════');
+
+      // Execute the real trade via Kraken
+      const orderResult = await krakenService.placeSpotOrder({
+        pair: signal.pair.replace('/', ''),
+        side: signal.side,
+        type: 'market',
+        size: volume,
+        botId: 'A',
+        reason,
+      });
+
+      // Get execution price from order result
+      const executionPrice = orderResult.price || currentPrice;
+
+      // Log successful execution
+      botALogger.info('✅ TRADE EXECUTED SUCCESSFULLY');
+      botALogger.info(`   Order ID: ${orderResult.orderId || 'N/A'}`);
+      botALogger.info(`   Execution Price: ${executionPrice.toFixed(2)}`);
+      botALogger.info(`   Final Volume: ${volume.toFixed(8)}`);
+      botALogger.info('═══════════════════════════════════════════════════════════');
+
+      // Create trade record
+      const trade: BotATrade = {
+        pair: signal.pair,
+        side: signal.side,
+        size: volume,
+        entry_price: executionPrice,
+        pnl_usd: 0, // P&L will be calculated when position is closed
+        usdAmount,
+        reason,
+      };
+
+      // Save trade to database
+      await this.logTrade(trade);
+
+      // Update open positions count
+      this.openPositions++;
+
+      // Log to standard trade logger
+      botALogger.trade('A', signal.pair, signal.side, volume, executionPrice, 0);
+
+      return trade;
+
+    } catch (error) {
+      botALogger.error('═══════════════════════════════════════════════════════════');
+      botALogger.error('❌ TRADE EXECUTION FAILED');
+      botALogger.error(`   Pair: ${signal.pair}`);
+      botALogger.error(`   Side: ${signal.side}`);
+      botALogger.error(`   Reason: ${reason}`);
+      botALogger.error(`   Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      botALogger.error('═══════════════════════════════════════════════════════════');
+      
+      // Track loss if applicable
+      if (error instanceof Error && error.message.includes('insufficient')) {
+        botALogger.info('Insufficient funds - skipping trade');
+      }
+      
       return null;
     }
   }

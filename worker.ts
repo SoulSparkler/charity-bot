@@ -12,6 +12,13 @@ import { riskEngine } from './src/services/riskEngine';
 // Load environment variables
 dotenv.config();
 
+// Trading configuration from environment
+const ALLOW_REAL_TRADING = process.env.ALLOW_REAL_TRADING === 'true';
+const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const BOT_A_ENABLED = ALLOW_REAL_TRADING && !DEMO_MODE;
+const BOT_B_ENABLED = false; // Disabled for now
+const BOT_C_ENABLED = false; // Disabled for now
+
 class CharityBotWorker {
   private app: express.Application;
   private isRunning = false;
@@ -131,8 +138,14 @@ class CharityBotWorker {
    * Run Bot A execution
    */
   private async runBotA(): Promise<void> {
+    // Check if Bot A is enabled
+    if (!BOT_A_ENABLED) {
+      performanceLogger.info('⏸️ Bot A is disabled (ALLOW_REAL_TRADING=false or DEMO_MODE=true)');
+      return;
+    }
+
     try {
-      performanceLogger.info('🔄 Starting Bot A execution');
+      performanceLogger.info('🔄 Starting Bot A execution (REAL TRADING ENABLED)');
 
       const result = await botAEngine.runBotAOnce();
       if (result.success) {
@@ -152,6 +165,12 @@ class CharityBotWorker {
    * Run Bot B execution
    */
   private async runBotB(): Promise<void> {
+    // Bot B is disabled for now
+    if (!BOT_B_ENABLED) {
+      performanceLogger.info('⏸️ Bot B is disabled');
+      return;
+    }
+
     try {
       performanceLogger.info('🔄 Starting Bot B execution');
 
@@ -387,6 +406,11 @@ async function start() {
     worker.startServer(port);
 
     logger.info('🎉 Charity Bot Worker is now running!');
+    logger.info('');
+    logger.info('📋 Bot Status:');
+    logger.info(`   • Bot A: ${BOT_A_ENABLED ? '✅ ENABLED (Real Trading)' : '⏸️ DISABLED'}`);
+    logger.info(`   • Bot B: ${BOT_B_ENABLED ? '✅ ENABLED' : '⏸️ DISABLED'}`);
+    logger.info(`   • Bot C: ${BOT_C_ENABLED ? '✅ ENABLED' : '⏸️ DISABLED'}`);
     logger.info('');
     logger.info('📋 Scheduled Tasks:');
     logger.info('   • Sentiment Analysis: Every 15 minutes');
