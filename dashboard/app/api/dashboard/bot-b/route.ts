@@ -28,20 +28,20 @@ export async function GET(request: NextRequest) {
         win_rate: botBData.win_rate
       });
 
-      // Ensure we always have valid data structure
+      // Ensure we always have valid data structure for Bot B (Vorgina)
       const data = {
         current_balance: botBData.current_balance || 0,
-        cycle_number: botBData.cycle_number || 1,
-        cycle_target: botBData.cycle_target || 0,
-        cycle_progress: botBData.cycle_progress || 0,
-        risk_mode: botBData.risk_mode || "Conservative",
+        mtd_pnl: botBData.mtd_pnl || 0,
+        estimated_next_month_donation: botBData.estimated_next_month_donation || 0,
         today_trades: botBData.today_trades || 0,
         win_rate: botBData.win_rate || 0.75,
         total_pnl_today: botBData.total_pnl_today || 0,
+        monthly_reports: botBData.monthly_reports || [],
+        risk_mode: "Conservative",
         trades: botBData.trades || [],
         sentiment: {
           mcs: botBData.sentiment?.mcs || 0.5,
-          risk_level: botBData.sentiment?.risk_level || "Conservative",
+          risk_level: "Conservative",
         },
         last_updated: botBData.last_updated || new Date().toISOString(),
       };

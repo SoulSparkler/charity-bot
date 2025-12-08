@@ -233,16 +233,22 @@ app.get('/api/bot-b/data', async (_req, res) => {
         const stats = await botBEngine.getBotBStatistics(1); // Last 1 day
         console.log('✅ [Bot-B Dashboard] Statistics retrieved:', stats);
         
+        // Calculate MTD P&L and estimated donation
+        const currentDate = new Date();
+        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const monthProfit = stats.currentBalance - (stats.currentBalance - stats.totalPnL); // Simplified calculation
+        const estimatedDonation = monthProfit > 0 ? monthProfit * 0.5 : 0; // 50% of monthly profits
+        
         botData = {
           mode: "LIVE",
           current_balance: botStatus.balance || 0,
-          cycle_number: 1, // Bot B doesn't use cycles like Bot A
-          cycle_target: 0, // No target for Bot B
-          cycle_progress: 0,
-          risk_mode: "Conservative",
+          mtd_pnl: stats.totalPnL || 0,
+          estimated_next_month_donation: estimatedDonation,
           today_trades: botStatus.todaysTrades || 0,
           win_rate: stats.winRate || 0.8,
           total_pnl_today: stats.totalPnL || 0,
+          monthly_reports: [], // Will be populated from monthly reports if needed
+          risk_mode: "Conservative",
           trades: [], // Will be populated from trade logs if needed
           sentiment: {
             mcs: mcs || 0.5,
@@ -293,17 +299,18 @@ function createMockBotBData(mode: string) {
   const baseBalance = 50 + Math.random() * 30; // Random balance between 50-80
   const winRate = 0.75 + Math.random() * 0.2; // 75-95% win rate (Bot B is more conservative)
   const todayPnL = Math.round((Math.random() - 0.3) * 15 * 100) / 100; // Generally positive P&L
+  const mtdPnL = todayPnL + Math.round((Math.random() - 0.2) * 25 * 100) / 100; // Month-to-date P&L
+  const estimatedDonation = mtdPnL > 0 ? mtdPnL * 0.5 : 0; // 50% of monthly profits
   
   return {
     mode: mode,
     current_balance: Math.round(baseBalance * 100) / 100,
-    cycle_number: 1,
-    cycle_target: 0,
-    cycle_progress: 0,
-    risk_mode: "Conservative",
+    mtd_pnl: mtdPnL,
+    estimated_next_month_donation: Math.round(estimatedDonation * 100) / 100,
     today_trades: Math.floor(Math.random() * 2), // Bot B trades less frequently
     win_rate: Math.round(winRate * 1000) / 1000,
     total_pnl_today: todayPnL,
+    monthly_reports: [], // Empty for now, will be populated when real data available
     trades: [],
     sentiment: {
       mcs: 0.5 + Math.random() * 0.3, // 0.5-0.8 MCS
@@ -318,13 +325,13 @@ function sanitizeBotBData(data: any) {
   return {
     mode: data.mode || "DEMO",
     current_balance: data.current_balance || 0,
-    cycle_number: data.cycle_number || 1,
-    cycle_target: data.cycle_target || 0,
-    cycle_progress: data.cycle_progress || 0,
-    risk_mode: data.risk_mode || "Conservative",
+    mtd_pnl: data.mtd_pnl || 0,
+    estimated_next_month_donation: data.estimated_next_month_donation || 0,
     today_trades: data.today_trades || 0,
     win_rate: data.win_rate || 0.75,
     total_pnl_today: data.total_pnl_today || 0,
+    monthly_reports: data.monthly_reports || [],
+    risk_mode: data.risk_mode || "Conservative",
     trades: data.trades || [],
     sentiment: {
       mcs: data.sentiment?.mcs || 0.5,
