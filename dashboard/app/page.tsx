@@ -125,10 +125,31 @@ function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
   const [usdAmount, setUsdAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     setIsSubmitting(true);
-    console.log("Preparing to submit:", usdAmount);
-    setIsSubmitting(false);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+      const response = await fetch(`${backendUrl}/api/sell-btc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usdAmount: Number(usdAmount) })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sell BTC');
+      }
+
+      console.log("Sell BTC success:", data);
+      setUsdAmount("");
+      onClose();
+    } catch (error) {
+      console.error("Sell BTC error:", error);
+      alert(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
