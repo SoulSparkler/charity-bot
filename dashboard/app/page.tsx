@@ -203,6 +203,7 @@ export default function Dashboard() {
   const [selling, setSelling] = useState(false);
   const [sellResult, setSellResult] = useState<any>(null);
   const [sellError, setSellError] = useState<string | null>(null);
+  const [showSellModal, setShowSellModal] = useState(false);
 
   const fetchDashboardState = async () => {
     try {
@@ -291,7 +292,7 @@ export default function Dashboard() {
   };
 
   const handleSellBtcClick = () => {
-    console.log("Sell BTC clicked");
+    setShowSellModal(true);
   };
 
   if (loading) {
@@ -546,6 +547,23 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      {/* Simple Sell BTC Modal */}
+      {showSellModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Sell BTC Modal</h3>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowSellModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
