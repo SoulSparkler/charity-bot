@@ -290,6 +290,10 @@ export default function Dashboard() {
     return Object.entries(balance).filter(([asset]) => !asset.startsWith('_')); // Show only real assets in table
   };
 
+  const handleSellBtcClick = () => {
+    console.log("Sell BTC clicked");
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -497,7 +501,7 @@ export default function Dashboard() {
         <div className="mt-4 flex justify-end">
           <button
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
-            onClick={() => console.log('Sell BTC button clicked')}
+            onClick={() => handleSellBtcClick()}
           >
             Sell BTC
           </button>
