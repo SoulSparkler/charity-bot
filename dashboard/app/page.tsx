@@ -116,6 +116,53 @@ function SellBTCModal({ isOpen, onClose, onSell, btcBalance, loading }: SellBTCM
   );
 }
 
+interface SimpleSellBTCModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
+  const [usdAmount, setUsdAmount] = useState("");
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-semibold text-white mb-4">Sell BTC Modal</h3>
+        
+        <div className="mb-4">
+          <label className="block text-gray-300 text-sm font-medium mb-2">
+            USD Amount
+          </label>
+          <input
+            type="number"
+            value={usdAmount}
+            onChange={(e) => setUsdAmount(e.target.value)}
+            placeholder="Enter USD amount"
+            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        
+        <div className="flex justify-end space-x-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+          >
+            Close
+          </button>
+          <button
+            onClick={() => console.log("Continue clicked, amount:", usdAmount)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface KrakenBalanceTests {
   connection: {
     success: boolean;
@@ -550,19 +597,10 @@ export default function Dashboard() {
 
       {/* Simple Sell BTC Modal */}
       {showSellModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-white mb-4">Sell BTC Modal</h3>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowSellModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <SimpleSellBTCModal
+          isOpen={showSellModal}
+          onClose={() => setShowSellModal(false)}
+        />
       )}
     </div>
   );
