@@ -119,9 +119,10 @@ function SellBTCModal({ isOpen, onClose, onSell, btcBalance, loading }: SellBTCM
 interface SimpleSellBTCModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess: () => Promise<void>;
 }
 
-function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
+function SimpleSellBTCModal({ isOpen, onClose, onSuccess }: SimpleSellBTCModalProps) {
   const [usdAmount, setUsdAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -142,6 +143,7 @@ function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
       }
 
       console.log("Sell BTC success:", data);
+      await onSuccess();
       setUsdAmount("");
       onClose();
     } catch (error) {
@@ -630,6 +632,7 @@ export default function Dashboard() {
         <SimpleSellBTCModal
           isOpen={showSellModal}
           onClose={() => setShowSellModal(false)}
+          onSuccess={fetchDashboardState}
         />
       )}
     </div>
