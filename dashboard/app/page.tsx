@@ -123,6 +123,13 @@ interface SimpleSellBTCModalProps {
 
 function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
   const [usdAmount, setUsdAmount] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleContinue = () => {
+    setIsSubmitting(true);
+    console.log("Preparing to submit:", usdAmount);
+    setIsSubmitting(false);
+  };
 
   if (!isOpen) return null;
 
@@ -147,15 +154,17 @@ function SimpleSellBTCModal({ isOpen, onClose }: SimpleSellBTCModalProps) {
         <div className="flex justify-end space-x-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors disabled:opacity-50"
           >
             Close
           </button>
           <button
-            onClick={() => console.log("Continue clicked, amount:", usdAmount)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            onClick={handleContinue}
+            disabled={isSubmitting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            Continue
+            {isSubmitting ? "Processing..." : "Continue"}
           </button>
         </div>
       </div>
