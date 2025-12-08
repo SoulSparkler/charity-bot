@@ -237,6 +237,174 @@ app.post('/api/bots/execute', async (req, res) => {
   }
 });
 
+// BTC Sell endpoint
+app.post('/api/sell-btc', async (req, res) => {
+  try {
+    // Input validation
+    const { usdAmount } = req.body;
+    
+    if (!usdAmount || typeof usdAmount !== 'number' || usdAmount <= 0) {
+      res.status(400).json({ 
+        error: 'Invalid usdAmount. Must be a positive number.' 
+      });
+      return;
+    }
+
+    // Check if real trading is enabled
+    if (process.env.ALLOW_REAL_TRADING !== 'true') {
+      res.status(403).json({ 
+        error: 'Real trading is disabled. Set ALLOW_REAL_TRADING=true to enable.' 
+      });
+      return;
+    }
+
+    console.log(`📤 BTC Sell Request: ${usdAmount} USD worth of BTC`);
+
+    // 1. Fetch current BTC/USD price
+    const tickerData = await krakenService.getTicker(['BTCUSD']);
+    const btcPrice = parseFloat(tickerData['BTCUSD']?.price || '0');
+    
+    if (!btcPrice || btcPrice <= 0) {
+      res.status(500).json({ 
+        error: 'Failed to fetch valid BTC/USD price from Kraken' 
+      });
+      return;
+    }
+
+    console.log(`💰 Current BTC price: ${btcPrice.toFixed(2)}`);
+
+    // 2. Convert USD amount to BTC volume
+    const btcVolume = usdAmount / btcPrice;
+    
+    // Kraken requires minimum volume and specific decimal places
+    const minVolume = 0.0001; // Minimum BTC volume for Kraken
+    if (btcVolume < minVolume) {
+      res.status(400).json({ 
+        error: `USD amount too small. Minimum BTC volume is ${minVolume} BTC (≈${(minVolume * btcPrice).toFixed(2)} USD)`,
+        calculatedVolume: btcVolume,
+        minRequired: minVolume,
+        currentPrice: btcPrice
+      });
+      return;
+    }
+
+    // Round to 8 decimal places (Kraken standard for BTC)
+    const roundedBtcVolume = Math.round(btcVolume * 100000000) / 100000000;
+
+    console.log(`🔄 Converting ${usdAmount} USD → ${roundedBtcVolume} BTC @ ${btcPrice.toFixed(2)}`);
+
+    // 3. Check available BTC balance to prevent overselling
+    const portfolio = await krakenService.getPortfolioBalances();
+    const availableBtc = portfolio.BTC;
+
+    if (availableBtc <= 0) {
+      res.status(400).json({ 
+        error: 'No BTC available to sell',
+        availableBTC: availableBtc
+      });
+      return;
+    }
+
+    if (roundedBtcVolume > availableBtc) {
+      res.status(400).json({ 
+        error: 'Insufficient BTC balance',
+        requestedVolume: roundedBtcVolume,
+        availableBTC: availableBtc,
+        maxSellableUSD: availableBtc * btcPrice
+      });
+      return;
+    }
+
+    console.log(`✅ Balance check passed: ${availableBtc} BTC available, selling ${roundedBtcVolume} BTC`);
+
+    // 4. Create a Kraken market sell order
+    const orderRequest = {
+      pair: 'BTCUSD',
+      side: 'sell' as const,
+      type: 'market' as const,
+      size: roundedBtcVolume,
+      reason: 'Manual BTC sell order via API',
+      botId: 'A' as const,
+      mcs: 0.5
+    };
+
+    const order = await krakenService.placeSpotOrder(orderRequest);
+
+    console.log(`🎯 Order placed successfully: ${order.orderId}`);
+
+    // 5. Get updated balances after the sale
+    const updatedPortfolio = await krakenService.getPortfolioBalances();
+    
+    // Calculate actual execution details
+    // Note: Market orders execute at the best available price, which might differ slightly from the ticker
+    const executedPrice = order.price || btcPrice;
+    const actualUsdReceived = roundedBtcVolume * executedPrice;
+    const newUsdBalance = updatedPortfolio.USD;
+
+    const response = {
+      success: true,
+      orderId: order.orderId,
+      executedPrice: executedPrice,
+      volumeSold: roundedBtcVolume,
+      usdAmountReceived: actualUsdReceived,
+      newUsdBalance: newUsdBalance,
+      remainingBTC: updatedPortfolio.BTC,
+      executionTime: order.createdAt,
+      details: {
+        requestedUSD: usdAmount,
+        marketPriceAtRequest: btcPrice,
+        executedPrice: executedPrice,
+        priceDifference: executedPrice - btcPrice,
+        priceDifferencePercent: ((executedPrice - btcPrice) / btcPrice) * 100
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    console.log(`✅ BTC Sell completed: ${roundedBtcVolume} BTC @ ${executedPrice.toFixed(2)} = ${actualUsdReceived.toFixed(2)} USD`);
+    console.log(`📊 New balances - USD: ${newUsdBalance.toFixed(2)}, BTC: ${updatedPortfolio.BTC}`);
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('❌ BTC Sell failed:', error);
+    
+    // Handle specific Kraken API errors
+    if (error instanceof Error) {
+      const errorMessage = error.message;
+      
+      if (errorMessage.includes('Insufficient funds')) {
+        res.status(400).json({ 
+          error: 'Insufficient funds to complete the trade',
+          details: errorMessage 
+        });
+        return;
+      }
+      
+      if (errorMessage.includes('Trade rejected')) {
+        res.status(400).json({ 
+          error: 'Trade rejected by Kraken',
+          details: errorMessage 
+        });
+        return;
+      }
+      
+      if (errorMessage.includes('Invalid amount')) {
+        res.status(400).json({ 
+          error: 'Invalid trade amount',
+          details: errorMessage 
+        });
+        return;
+      }
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to execute BTC sell order',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+    return;
+  }
+});
+
 // Start server
 async function startServer() {
   try {
