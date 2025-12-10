@@ -418,6 +418,30 @@ app.get("/api/sentiment", async (req, res) => {
   }
 });
 
+// Kraken balance endpoint - retrieves real account balance
+app.get('/api/kraken/balance', async (_req, res) => {
+  try {
+    console.log('Fetching Kraken balance…');
+    
+    const balance = await krakenService.getBalances();
+    
+    console.log('Received Kraken response');
+    
+    res.json({
+      success: true,
+      balance: balance
+    });
+    
+  } catch (error) {
+    console.error('Balance endpoint error:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch balance'
+    });
+  }
+});
+
 // Portfolio balances endpoint (clean format for dashboard)
 app.get('/api/portfolio', async (_req, res) => {
   try {
