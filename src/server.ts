@@ -91,14 +91,14 @@ app.get('/api/bot-a/data', async (_req, res) => {
         const botStatus = await botAEngine.getStatus();
         console.log('✅ [Bot-A Dashboard] Bot status retrieved:', botStatus);
         
-        // Get real Kraken USD balance
-        let usdBalance = 230; // Fallback to seed amount
+        // Get real Kraken USD balance (NEW CODE)
+        let usdBalance = 0;
         try {
           const balances = await krakenService.getBalances();
           usdBalance = Number(balances["ZUSD"] || balances["USD"] || 0);
-          console.log("Bot A using Kraken USD balance:", usdBalance);
-        } catch (balanceError) {
-          console.warn('⚠️ [Bot-A Dashboard] Failed to get Kraken balance, using fallback:', balanceError);
+          console.log("💰 [Bot-A Dashboard] Kraken USD Balance:", usdBalance);
+        } catch (err) {
+          console.error("⚠️ [Bot-A Dashboard] Could not load Kraken balance:", err);
         }
         
         // Get sentiment data
