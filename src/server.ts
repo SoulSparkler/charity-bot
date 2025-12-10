@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { testConnection, closeDatabase, getDatabaseType, initializeDatabase, ensureStartSnapshot, getSnapshot } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
@@ -11,6 +12,23 @@ dotenv.config();
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Admin API key middleware
+function requireAdminApiKey(req: Request, res: Response, next: NextFunction): void {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) {
+    res.status(500).json({ error: "Admin API key not configured" });
+    return;
+  }
+
+  const provided = req.headers["x-admin-key"];
+  if (!provided || provided !== adminKey) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+}
 
 app.use(express.json());
 
@@ -525,7 +543,7 @@ app.get('/api/performance', async (_req, res) => {
 });
 
 // Manual bot execution endpoints (for testing)
-app.post('/api/bots/execute', async (req, res) => {
+app.post('/api/bots/execute', requireAdminApiKey, async (req, res) => {
   try {
     const { bot } = req.body;
     
@@ -547,22 +565,22 @@ app.post('/api/bots/execute', async (req, res) => {
 });
 
 // BTC Sell endpoint
-app.post('/api/sell-btc', async (req, res) => {
+app.post('/api/sell-btc', requireAdminApiKey, async (req, res) => {
   try {
     // Input validation
     const { usdAmount } = req.body;
     
     if (!usdAmount || typeof usdAmount !== 'number' || usdAmount <= 0) {
-      res.status(400).json({ 
-        error: 'Invalid usdAmount. Must be a positive number.' 
+      res.status(400).json({
+        error: 'Invalid usdAmount. Must be a positive number.'
       });
       return;
     }
 
     // Check if real trading is enabled
     if (process.env.ALLOW_REAL_TRADING !== 'true') {
-      res.status(403).json({ 
-        error: 'Real trading is disabled. Set ALLOW_REAL_TRADING=true to enable.' 
+      res.status(403).json({
+        error: 'Real trading is disabled. Set ALLOW_REAL_TRADING=true to enable.'
       });
       return;
     }
