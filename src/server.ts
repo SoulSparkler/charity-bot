@@ -91,6 +91,16 @@ app.get('/api/bot-a/data', async (_req, res) => {
         const botStatus = await botAEngine.getStatus();
         console.log('✅ [Bot-A Dashboard] Bot status retrieved:', botStatus);
         
+        // Get real Kraken USD balance
+        let usdBalance = 230; // Fallback to seed amount
+        try {
+          const balances = await krakenService.getBalances();
+          usdBalance = Number(balances["ZUSD"] || balances["USD"] || 0);
+          console.log("Bot A using Kraken USD balance:", usdBalance);
+        } catch (balanceError) {
+          console.warn('⚠️ [Bot-A Dashboard] Failed to get Kraken balance, using fallback:', balanceError);
+        }
+        
         // Get sentiment data
         const mcs = await sentimentService.getLatestMCS();
         console.log('✅ [Bot-A Dashboard] MCS retrieved:', mcs);
@@ -101,7 +111,7 @@ app.get('/api/bot-a/data', async (_req, res) => {
         
         botData = {
           mode: "LIVE",
-          current_balance: botStatus.balance || 0,
+          current_balance: usdBalance,
           cycle_number: botStatus.cycle || 1,
           cycle_target: botStatus.target || 200,
           cycle_progress: botStatus.progress || 0,
