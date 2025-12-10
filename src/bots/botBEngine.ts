@@ -40,6 +40,13 @@ class BotBEngine {
    */
   async runBotBOnce(): Promise<{ success: boolean; message: string; trades?: BotBTrade[] }> {
     try {
+      // Check if Bot B is enabled
+      const isEnabled = await this.getBotBEnabledFlag();
+      if (!isEnabled) {
+        botBLogger.debug('[Bot-B] Not enabled. Skipping execution.');
+        return { success: true, message: 'Bot B not enabled' };
+      }
+
       botBLogger.info('Starting Bot B execution cycle');
 
       // Load current state
@@ -323,13 +330,71 @@ class BotBEngine {
   }
 
   /**
+   * Get Bot B enabled flag from database
+   */
+  private async getBotBEnabledFlag(): Promise<boolean> {
+    try {
+      const result = await query(`
+        SELECT botB_enabled
+        FROM bot_state
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+
+      if (result.rows.length === 0) {
+        return false;
+      }
+
+      return result.rows[0].botB_enabled === true;
+    } catch (error) {
+      botBLogger.error('Failed to get Bot B enabled flag', error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Set Bot B enabled flag in database
+   */
+  private async setBotBEnabledFlag(enabled: boolean): Promise<void> {
+    try {
+      await query(`
+        UPDATE bot_state
+        SET botB_enabled = $1,
+            updated_at = NOW()
+        WHERE id = (
+          SELECT id FROM bot_state
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+      `, [enabled]);
+    } catch (error) {
+      botBLogger.error('Failed to set Bot B enabled flag', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enable Bot B from Bot A trigger
+   */
+  async enableBotBFromBotA(): Promise<void> {
+    try {
+      botBLogger.info('[Bot-B] Activation request received from Bot-A');
+      await this.setBotBEnabledFlag(true);
+      botBLogger.info('[Bot-B] Enabled for trading (triggered by Bot-A)');
+    } catch (error) {
+      botBLogger.error('[Bot-B] Failed to enable from Bot-A trigger', error as Error);
+      throw error;
+    }
+  }
+
+  /**
    * Get current Bot B state
    */
   private async getBotBState(): Promise<BotBState> {
     const result = await query(`
       SELECT id, botB_virtual_usd, last_reset
-      FROM bot_state 
-      ORDER BY created_at DESC 
+      FROM bot_state
+      ORDER BY created_at DESC
       LIMIT 1
     `);
 

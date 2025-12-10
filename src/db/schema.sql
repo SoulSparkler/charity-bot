@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS bot_state (
     botB_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     botA_cycle_number INTEGER NOT NULL DEFAULT 1,
     botA_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
+    botB_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    botB_triggered BOOLEAN NOT NULL DEFAULT FALSE,
     last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -34,8 +36,8 @@ CREATE TRIGGER update_bot_state_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert initial bot state if not exists
-INSERT INTO bot_state (botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target)
-SELECT 230.00, 0.00, 1, 200.00
+INSERT INTO bot_state (botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target, botB_enabled, botB_triggered)
+SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 
 -- Sentiment readings table (simple version)

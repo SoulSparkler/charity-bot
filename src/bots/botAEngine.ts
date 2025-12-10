@@ -19,6 +19,8 @@ export interface BotAState {
   botB_virtual_usd: number;
   botA_cycle_number: number;
   botA_cycle_target: number;
+  botB_enabled: boolean;
+  botB_triggered: boolean;
   last_reset: Date;
 }
 
@@ -88,9 +90,25 @@ class BotAEngine {
       // Check if target is reached and cycle should be reset
       if (state.botA_virtual_usd >= state.botA_cycle_target) {
         await this.handleCycleCompletion(state);
-        return { 
-          success: true, 
-          message: `Cycle ${state.botA_cycle_number} completed. Target: ${state.botA_cycle_target} reached.` 
+        
+        // Trigger Bot B when cycle is completed
+        const cycleProgress = (state.botA_virtual_usd / state.botA_cycle_target) * 100;
+        if (cycleProgress >= 100 && !state.botB_triggered) {
+          console.log("[Bot-A] Cycle target reached. Triggering Bot-B activation...");
+
+          try {
+            const { botBEngine } = await import("./botBEngine");
+            await botBEngine.enableBotBFromBotA();
+          } catch (err) {
+            console.error("[Bot-A] Failed to trigger Bot-B:", err);
+          }
+
+          await this.updateBotAStatusFlag("botB_triggered", true);
+        }
+        
+        return {
+          success: true,
+          message: `Cycle ${state.botA_cycle_number} completed. Target: ${state.botA_cycle_target} reached.`
         };
       }
 
@@ -404,13 +422,34 @@ class BotAEngine {
   }
 
   /**
+   * Update Bot A status flag (e.g., botBTriggered)
+   */
+  private async updateBotAStatusFlag(flagName: string, value: boolean): Promise<void> {
+    try {
+      await query(`
+        UPDATE bot_state
+        SET ${flagName} = $1,
+            updated_at = NOW()
+        WHERE id = (
+          SELECT id FROM bot_state
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+      `, [value]);
+    } catch (error) {
+      botALogger.error(`Failed to update Bot A status flag: ${flagName}`, error as Error);
+      throw error;
+    }
+  }
+
+  /**
    * Get current Bot A state
    */
   private async getBotAState(): Promise<BotAState> {
     const result = await query(`
-      SELECT id, botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target, last_reset
-      FROM bot_state 
-      ORDER BY created_at DESC 
+      SELECT id, botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target, botB_enabled, botB_triggered, last_reset
+      FROM bot_state
+      ORDER BY created_at DESC
       LIMIT 1
     `);
 
