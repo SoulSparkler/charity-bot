@@ -1,5 +1,6 @@
 import { krakenLogger } from '../utils/logger';
 import { riskEnforcer, TradeRequest } from './riskEnforcer';
+import { saveTrade } from '../db/trades';
 import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
 
@@ -485,6 +486,30 @@ class KrakenService {
 
       krakenLogger.trade('REAL', orderRequest.pair, orderRequest.side, orderRequest.size, orderRequest.price || 0, 0);
       krakenLogger.info(`✅ Real order placed successfully: ${order.orderId}`);
+      
+      // Automatically save trade to database
+      try {
+        const tradeData: any = {
+          bot: orderRequest.botId || 'A',
+          type: orderRequest.side,
+          pair: orderRequest.pair.replace('/', ''),
+          price: order.price || orderRequest.price || 0,
+          volume: orderRequest.size,
+          usd_value: (order.price || orderRequest.price || 0) * orderRequest.size,
+          order_id: order.orderId
+        };
+        
+        // Only add mcs if it exists
+        if (orderRequest.mcs !== undefined) {
+          tradeData.mcs = orderRequest.mcs;
+        }
+        
+        await saveTrade(tradeData);
+        krakenLogger.info('✅ Trade saved to database successfully');
+      } catch (saveError) {
+        krakenLogger.error('❌ Failed to save trade to database:', saveError as Error);
+        // Don't fail the entire operation if saving fails
+      }
       
       return order;
       

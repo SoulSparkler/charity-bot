@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { testConnection, closeDatabase, getDatabaseType, initializeDatabase, ensureStartSnapshot, getSnapshot } from './db/db';
+import { testConnection, closeDatabase, getDatabaseType, initializeDatabase, ensureStartSnapshot, getSnapshot, query } from './db/db';
 import { sentimentService } from './services/sentimentService';
 import { krakenService } from './services/krakenService';
 import testBalanceRoute from './routes/testBalance';
@@ -539,6 +539,30 @@ app.get('/api/performance', async (_req, res) => {
   } catch (error) {
     console.error('Error getting performance data:', error);
     res.status(500).json({ error: 'Failed to get performance data' });
+  }
+});
+
+// Trade history endpoint
+app.get('/api/trades', async (req, res) => {
+  try {
+    const bot = req.query.bot;
+    const limit = Math.min(Number(req.query.limit) || 50, 500);
+
+    let sqlQuery = "SELECT * FROM trades";
+    const params: any[] = [];
+
+    if (bot) {
+      sqlQuery += " WHERE bot = $1";
+      params.push(bot);
+    }
+
+    sqlQuery += " ORDER BY timestamp DESC LIMIT " + limit;
+
+    const result = await query(sqlQuery, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Failed to load trades:", err);
+    res.status(500).json({ error: "Failed to fetch trades" });
   }
 });
 

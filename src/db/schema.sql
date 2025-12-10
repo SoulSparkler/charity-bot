@@ -70,19 +70,23 @@ CREATE INDEX IF NOT EXISTS idx_trading_cycles_start_time ON trading_cycles(start
 -- Trades table
 CREATE TABLE IF NOT EXISTS trades (
     id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMPTZ NOT NULL,
-    pair TEXT NOT NULL,
-    side TEXT NOT NULL,
-    price NUMERIC NOT NULL,
-    volume NUMERIC NOT NULL,
-    status TEXT NOT NULL,
-    raw_response JSONB
+    bot VARCHAR(10) NOT NULL,
+    type VARCHAR(10) NOT NULL,              -- "buy" or "sell"
+    pair VARCHAR(20) NOT NULL,              -- e.g. "BTCUSD"
+    price NUMERIC NOT NULL,                 -- execution price
+    volume NUMERIC NOT NULL,                -- amount of BTC or ETH
+    usd_value NUMERIC NOT NULL,             -- price * volume
+    order_id VARCHAR(100),                  -- Kraken order id
+    mcs NUMERIC,                            -- optional: market confidence score at the time
+    timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Create index for trades
 CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_trades_pair ON trades(pair);
 CREATE INDEX IF NOT EXISTS idx_trades_side ON trades(side);
+CREATE INDEX IF NOT EXISTS idx_trades_bot ON trades(bot);
+CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(type);
 
 -- Balance snapshots table
 DROP TABLE IF EXISTS balance_snapshots CASCADE;
