@@ -559,3 +559,17 @@ class BotAEngine {
 // Export singleton instance
 export const botAEngine = new BotAEngine();
 export default botAEngine;
+
+// Enable continuous mode for Bot A
+if (process.env.ALLOW_REAL_TRADING === "true" && process.env.DEMO_MODE !== "true") {
+  console.log("🔄 [Bot-A] Continuous mode enabled: running every 60 seconds");
+
+  setInterval(async () => {
+    try {
+      console.log("🔄 [Bot-A] Running automatic cycle...");
+      await botAEngine.runBotAOnce();
+    } catch (err) {
+      console.error("❌ [Bot-A] Error in automatic cycle:", err);
+    }
+  }, 60_000);
+}
