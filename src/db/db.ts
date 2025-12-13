@@ -113,12 +113,43 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   try {
+    // First, ensure schema is applied
     const schemaPath = path.join(__dirname, "schema.sql");
     const schema = fs.readFileSync(schemaPath, "utf8");
     await query(schema);
     console.log("[DB] PostgreSQL schema initialized");
+
+    // Safe migration: Add missing columns to existing tables (idempotent)
+    // This ensures backward compatibility with existing databases
+    const safeMigrations = [
+      // Add botB_enabled column if it doesn't exist
+      `ALTER TABLE bot_state
+       ADD COLUMN IF NOT EXISTS botB_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
+      
+      // Add botB_triggered column if it doesn't exist
+      `ALTER TABLE bot_state
+       ADD COLUMN IF NOT EXISTS botB_triggered BOOLEAN NOT NULL DEFAULT FALSE`,
+    ];
+
+    for (const migration of safeMigrations) {
+      try {
+        await query(migration);
+        console.log("[DB] Applied safe migration successfully");
+      } catch (migrationError: any) {
+        // If column already exists, PostgreSQL will throw an error
+        // We can safely ignore "duplicate column" errors
+        if (migrationError.code === '42701') {
+          console.log("[DB] Column already exists, skipping migration");
+        } else {
+          console.error("[DB] Migration failed:", migrationError);
+          throw migrationError;
+        }
+      }
+    }
+
+    console.log("[DB] Database initialization completed successfully");
   } catch (error) {
-    console.error("[DB] Failed to initialize schema:", error);
+    console.error("[DB] Failed to initialize database:", error);
     throw error;
   }
 }
