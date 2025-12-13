@@ -113,38 +113,73 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   try {
+    console.log("[DB] Starting database initialization...");
+
     // First, ensure schema is applied
     const schemaPath = path.join(__dirname, "schema.sql");
     const schema = fs.readFileSync(schemaPath, "utf8");
     await query(schema);
     console.log("[DB] PostgreSQL schema initialized");
 
-    // Safe migration: Add missing columns to existing tables (idempotent)
-    // This ensures backward compatibility with existing databases
-    const safeMigrations = [
+    // CRITICAL: Apply bot_state column migrations BEFORE any bot queries
+    // This ensures the columns exist before bots try to access them
+    console.log("[DB] Applying bot_state column migrations...");
+    
+    try {
       // Add botB_enabled column if it doesn't exist
-      `ALTER TABLE bot_state
-       ADD COLUMN IF NOT EXISTS botB_enabled BOOLEAN NOT NULL DEFAULT FALSE`,
-      
-      // Add botB_triggered column if it doesn't exist
-      `ALTER TABLE bot_state
-       ADD COLUMN IF NOT EXISTS botB_triggered BOOLEAN NOT NULL DEFAULT FALSE`,
-    ];
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'bot_state'
+            AND column_name = 'botB_enabled'
+          ) THEN
+            ALTER TABLE bot_state ADD COLUMN botB_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+            RAISE NOTICE 'Added botB_enabled column to bot_state';
+          ELSE
+            RAISE NOTICE 'botB_enabled column already exists';
+          END IF;
+        END
+        $$;
+      `);
+      console.log("[DB] botB_enabled column migration completed");
+    } catch (error) {
+      console.error("[DB] Failed to migrate botB_enabled column:", error);
+      throw error;
+    }
 
-    for (const migration of safeMigrations) {
-      try {
-        await query(migration);
-        console.log("[DB] Applied safe migration successfully");
-      } catch (migrationError: any) {
-        // If column already exists, PostgreSQL will throw an error
-        // We can safely ignore "duplicate column" errors
-        if (migrationError.code === '42701') {
-          console.log("[DB] Column already exists, skipping migration");
-        } else {
-          console.error("[DB] Migration failed:", migrationError);
-          throw migrationError;
-        }
-      }
+    try {
+      // Add botB_triggered column if it doesn't exist
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'bot_state'
+            AND column_name = 'botB_triggered'
+          ) THEN
+            ALTER TABLE bot_state ADD COLUMN botB_triggered BOOLEAN NOT NULL DEFAULT FALSE;
+            RAISE NOTICE 'Added botB_triggered column to bot_state';
+          ELSE
+            RAISE NOTICE 'botB_triggered column already exists';
+          END IF;
+        END
+        $$;
+      `);
+      console.log("[DB] botB_triggered column migration completed");
+    } catch (error) {
+      console.error("[DB] Failed to migrate botB_triggered column:", error);
+      throw error;
+    }
+
+    // Verify columns exist by testing a query
+    try {
+      await query("SELECT botB_enabled, botB_triggered FROM bot_state LIMIT 1");
+      console.log("[DB] Verified bot_state columns exist and are accessible");
+    } catch (error) {
+      console.error("[DB] Failed to verify bot_state columns:", error);
+      throw new Error("Database migration failed - bot_state columns not accessible");
     }
 
     console.log("[DB] Database initialization completed successfully");
