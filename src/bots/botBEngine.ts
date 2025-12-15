@@ -7,7 +7,7 @@ import { calculatePnL } from '../utils/math';
 
 export interface BotBState {
   id: string;
-  botB_virtual_usd: number;
+  bot_b_virtual_usd: number;
   monthly_start_balance: number;
   last_month_reset: Date;
 }
@@ -51,7 +51,7 @@ class BotBEngine {
 
       // Load current state
       const state = await this.getBotBState();
-      botBLogger.info(`Current Bot B balance: $${state.botB_virtual_usd}`);
+      botBLogger.info(`Current Bot B balance: $${state.bot_b_virtual_usd}`);
 
       // Check if trading is allowed
       const mcs = await sentimentService.getLatestMCS();
@@ -95,10 +95,10 @@ class BotBEngine {
         botBLogger.info(`Bot B executed ${executedTrades.length} conservative trades`);
       }
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `Bot B executed ${executedTrades.length} trades`,
-        trades: executedTrades 
+        trades: executedTrades
       };
 
     } catch (error) {
@@ -175,8 +175,8 @@ class BotBEngine {
       }
 
       // Very conservative position sizing - max 0.5% of balance
-      const maxPositionSize = state.botB_virtual_usd * 0.005; // 0.5% max
-      const riskBasedSize = state.botB_virtual_usd * riskAssessment.maxRiskPerTrade;
+      const maxPositionSize = state.bot_b_virtual_usd * 0.005; // 0.5% max
+      const riskBasedSize = state.bot_b_virtual_usd * riskAssessment.maxRiskPerTrade;
       const positionSize = Math.min(maxPositionSize, riskBasedSize);
 
       if (positionSize < 25) { // Minimum $25 trade for Bot B
@@ -262,19 +262,19 @@ class BotBEngine {
 
       // Get start balance for this month
       const monthStartState = await query(`
-        SELECT botB_virtual_usd, last_reset 
-        FROM bot_state 
-        WHERE created_at <= $1 
-        ORDER BY created_at DESC 
+        SELECT bot_b_virtual_usd, last_reset
+        FROM bot_state
+        WHERE created_at <= $1
+        ORDER BY created_at DESC
         LIMIT 1
       `, [startOfMonth]);
 
-      const startBalance = monthStartState.rows.length > 0 ? 
-        parseFloat(monthStartState.rows[0].botB_virtual_usd) : 0;
+      const startBalance = monthStartState.rows.length > 0 ?
+        parseFloat(monthStartState.rows[0].bot_b_virtual_usd) : 0;
 
       // Get current balance
       const currentState = await this.getBotBState();
-      const endBalance = currentState.botB_virtual_usd;
+      const endBalance = currentState.bot_b_virtual_usd;
 
       // Calculate profit and donation
       const monthProfit = endBalance - startBalance;
@@ -283,9 +283,9 @@ class BotBEngine {
       // Get trade statistics for the month
       const tradeStats = await query(`
         SELECT COUNT(*) as total_trades, SUM(pnl_usd) as total_pnl
-        FROM trade_logs 
-        WHERE bot = 'B' 
-          AND created_at >= $1 
+        FROM trade_logs
+        WHERE bot = 'B'
+          AND created_at >= $1
           AND created_at < $2
       `, [startOfMonth, new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)]);
 
@@ -392,7 +392,7 @@ class BotBEngine {
    */
   private async getBotBState(): Promise<BotBState> {
     const result = await query(`
-      SELECT id, botB_virtual_usd, last_reset
+      SELECT id, bot_b_virtual_usd, last_reset
       FROM bot_state
       ORDER BY created_at DESC
       LIMIT 1
@@ -413,10 +413,10 @@ class BotBEngine {
   private async initializeBotBState(): Promise<void> {
     await query(`
       INSERT INTO bot_state (
-        botA_virtual_usd, 
-        botB_virtual_usd, 
-        botA_cycle_number, 
-        botA_cycle_target
+        bot_a_virtual_usd,
+        bot_b_virtual_usd,
+        bot_a_cycle_number,
+        bot_a_cycle_target
       ) VALUES (230.00, 0.00, 1, 200.00)
     `);
     botBLogger.info('Initialized Bot B state');
@@ -447,7 +447,7 @@ class BotBEngine {
   private async updateVirtualBalance(botStateId: string, pnl: number): Promise<void> {
     await query(`
       UPDATE bot_state 
-      SET botB_virtual_usd = botB_virtual_usd + $1,
+      SET bot_b_virtual_usd = bot_b_virtual_usd + $1,
           updated_at = NOW()
       WHERE id = $2
     `, [pnl, botStateId]);
@@ -508,7 +508,7 @@ class BotBEngine {
         totalPnL: parseFloat(row.total_pnl) || 0,
         averageTradeSize: parseFloat(row.avg_trade_size) || 0,
         monthlyDonations: parseFloat(donationStats.rows[0]?.monthly_donations) || 0,
-        currentBalance: state.botB_virtual_usd,
+        currentBalance: state.bot_b_virtual_usd,
       };
     } catch (error) {
       botBLogger.error('Failed to get Bot B statistics', error as Error);
@@ -541,7 +541,7 @@ class BotBEngine {
 
       return {
         active: true,
-        balance: state.botB_virtual_usd,
+        balance: state.bot_b_virtual_usd,
         mcs,
         trading: mcs >= this.MIN_MCS_FOR_TRADING && todaysTrades < this.MAX_DAILY_TRADES,
         todaysTrades,

@@ -15,12 +15,12 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
 export interface BotAState {
   id: string;
-  botA_virtual_usd: number;
-  botB_virtual_usd: number;
-  botA_cycle_number: number;
-  botA_cycle_target: number;
-  botB_enabled: boolean;
-  botB_triggered: boolean;
+  bot_a_virtual_usd: number;
+  bot_b_virtual_usd: number;
+  bot_a_cycle_number: number;
+  bot_a_cycle_target: number;
+  bot_b_enabled: boolean;
+  bot_b_triggered: boolean;
   last_reset: Date;
 }
 
@@ -75,7 +75,7 @@ class BotAEngine {
 
       // Load current state
       const state = await this.getBotAState();
-      botALogger.info(`Current state - Balance: ${state.botA_virtual_usd}, Cycle: ${state.botA_cycle_number}, Target: ${state.botA_cycle_target}`);
+      botALogger.info(`Current state - Balance: ${state.bot_a_virtual_usd}, Cycle: ${state.bot_a_cycle_number}, Target: ${state.bot_a_cycle_target}`);
 
       // Check if trading is allowed based on MCS
       const mcs = await sentimentService.getLatestMCS();
@@ -88,12 +88,12 @@ class BotAEngine {
       const riskAssessment = await riskEngine.assessRisk('A', mcs);
 
       // Check if target is reached and cycle should be reset
-      if (state.botA_virtual_usd >= state.botA_cycle_target) {
+      if (state.bot_a_virtual_usd >= state.bot_a_cycle_target) {
         await this.handleCycleCompletion(state);
         
         // Trigger Bot B when cycle is completed
-        const cycleProgress = (state.botA_virtual_usd / state.botA_cycle_target) * 100;
-        if (cycleProgress >= 100 && !state.botB_triggered) {
+        const cycleProgress = (state.bot_a_virtual_usd / state.bot_a_cycle_target) * 100;
+        if (cycleProgress >= 100 && !state.bot_b_triggered) {
           console.log("[Bot-A] Cycle target reached. Triggering Bot-B activation...");
 
           try {
@@ -103,12 +103,12 @@ class BotAEngine {
             console.error("[Bot-A] Failed to trigger Bot-B:", err);
           }
 
-          await this.updateBotAStatusFlag("botB_triggered", true);
+          await this.updateBotAStatusFlag("bot_b_triggered", true);
         }
         
         return {
           success: true,
-          message: `Cycle ${state.botA_cycle_number} completed. Target: ${state.botA_cycle_target} reached.`
+          message: `Cycle ${state.bot_a_cycle_number} completed. Target: ${state.bot_a_cycle_target} reached.`
         };
       }
 
@@ -227,7 +227,7 @@ class BotAEngine {
       // Calculate position size based on risk assessment
       const positionSize = Math.min(
         riskAssessment.maxPositionSize,
-        state.botA_virtual_usd * riskAssessment.maxRiskPerTrade
+        state.bot_a_virtual_usd * riskAssessment.maxRiskPerTrade
       );
 
       if (positionSize < 10) { // Minimum $10 trade
@@ -236,7 +236,7 @@ class BotAEngine {
       }
 
       // For simplicity, we'll simulate instant execution with a small price improvement
-      const executionPrice = signal.side === 'buy' ? 
+      const executionPrice = signal.side === 'buy' ?
         currentPrice * 0.999 : // Buy 0.1% below market
         currentPrice * 1.001;  // Sell 0.1% above market
 
@@ -291,7 +291,7 @@ class BotAEngine {
 
       // Calculate USD amount (capped at MAX_TRADE_AMOUNT_USD)
       const requestedAmount = Math.min(TRADE_AMOUNT_USD, MAX_TRADE_AMOUNT_USD);
-      const usdAmount = Math.min(requestedAmount, state.botA_virtual_usd * 0.5); // Max 50% of balance per trade
+      const usdAmount = Math.min(requestedAmount, state.bot_a_virtual_usd * 0.5); // Max 50% of balance per trade
 
       if (usdAmount < 10) {
         botALogger.info(`Trade amount too small: ${usdAmount.toFixed(2)} (min $10)`);
@@ -398,22 +398,22 @@ class BotAEngine {
    */
   private async handleCycleCompletion(state: BotAState): Promise<void> {
     try {
-      botALogger.cycle('A', state.botA_cycle_number, state.botA_cycle_target, state.botA_virtual_usd);
-      botALogger.info(`Cycle ${state.botA_cycle_number} completed! Transferring $${this.TRANSFER_TO_B} to Bot B`);
+      botALogger.cycle('A', state.bot_a_cycle_number, state.bot_a_cycle_target, state.bot_a_virtual_usd);
+      botALogger.info(`Cycle ${state.bot_a_cycle_number} completed! Transferring $${this.TRANSFER_TO_B} to Bot B`);
 
       // Transfer to Bot B
       await query(`
-        UPDATE bot_state 
-        SET botB_virtual_usd = botB_virtual_usd + $1,
-            botA_virtual_usd = $2,
-            botA_cycle_number = botA_cycle_number + 1,
-            botA_cycle_target = botA_cycle_target + $2,
+        UPDATE bot_state
+        SET bot_b_virtual_usd = bot_b_virtual_usd + $1,
+            bot_a_virtual_usd = $2,
+            bot_a_cycle_number = bot_a_cycle_number + 1,
+            bot_a_cycle_target = bot_a_cycle_target + $2,
             last_reset = NOW(),
             updated_at = NOW()
         WHERE id = $3
       `, [this.TRANSFER_TO_B, this.CYCLE_SEED_AMOUNT, state.id]);
 
-      botALogger.info(`Cycle ${state.botA_cycle_number} completed. Next cycle target: $${(state.botA_cycle_target + this.CYCLE_SEED_AMOUNT).toFixed(2)}`);
+      botALogger.info(`Cycle ${state.bot_a_cycle_number} completed. Next cycle target: $${(state.bot_a_cycle_target + this.CYCLE_SEED_AMOUNT).toFixed(2)}`);
 
     } catch (error) {
       botALogger.error('Failed to handle cycle completion', error as Error);
@@ -447,7 +447,7 @@ class BotAEngine {
    */
   private async getBotAState(): Promise<BotAState> {
     const result = await query(`
-      SELECT id, botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target, botB_enabled, botB_triggered, last_reset
+      SELECT id, bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered, last_reset
       FROM bot_state
       ORDER BY created_at DESC
       LIMIT 1
@@ -468,10 +468,10 @@ class BotAEngine {
   private async initializeBotAState(): Promise<void> {
     await query(`
       INSERT INTO bot_state (
-        botA_virtual_usd, 
-        botB_virtual_usd, 
-        botA_cycle_number, 
-        botA_cycle_target
+        bot_a_virtual_usd,
+        bot_b_virtual_usd,
+        bot_a_cycle_number,
+        bot_a_cycle_target
       ) VALUES (230.00, 0.00, 1, 200.00)
     `);
     botALogger.info('Initialized Bot A state');
@@ -501,8 +501,8 @@ class BotAEngine {
    */
   private async updateVirtualBalance(botStateId: string, pnl: number): Promise<void> {
     await query(`
-      UPDATE bot_state 
-      SET botA_virtual_usd = botA_virtual_usd + $1,
+      UPDATE bot_state
+      SET bot_a_virtual_usd = bot_a_virtual_usd + $1,
           updated_at = NOW()
       WHERE id = $2
     `, [pnl, botStateId]);
@@ -522,13 +522,13 @@ class BotAEngine {
     try {
       // Get trade statistics
       const tradeStats = await query(`
-        SELECT 
+        SELECT
           COUNT(*) as total_trades,
           AVG(CASE WHEN pnl_usd > 0 THEN 1.0 ELSE 0.0 END) as win_rate,
           SUM(pnl_usd) as total_pnl,
           AVG(size * entry_price) as avg_trade_size
-        FROM trade_logs 
-        WHERE bot = 'A' 
+        FROM trade_logs
+        WHERE bot = 'A'
           AND created_at >= NOW() - INTERVAL '${days} days'
       `);
 
@@ -536,15 +536,15 @@ class BotAEngine {
       const state = await this.getBotAState();
 
       const row = tradeStats.rows[0];
-      const cycleProgress = state.botA_cycle_target > 0 ? 
-        (state.botA_virtual_usd / state.botA_cycle_target) * 100 : 0;
+      const cycleProgress = state.bot_a_cycle_target > 0 ?
+        (state.bot_a_virtual_usd / state.bot_a_cycle_target) * 100 : 0;
 
       return {
         totalTrades: parseInt(row.total_trades) || 0,
         winRate: parseFloat(row.win_rate) || 0,
         totalPnL: parseFloat(row.total_pnl) || 0,
         averageTradeSize: parseFloat(row.avg_trade_size) || 0,
-        currentCycle: state.botA_cycle_number,
+        currentCycle: state.bot_a_cycle_number,
         cycleProgress,
       };
     } catch (error) {
@@ -568,14 +568,14 @@ class BotAEngine {
     try {
       const state = await this.getBotAState();
       const mcs = await sentimentService.getLatestMCS();
-      const progress = state.botA_cycle_target > 0 ? 
-        (state.botA_virtual_usd / state.botA_cycle_target) * 100 : 0;
+      const progress = state.bot_a_cycle_target > 0 ?
+        (state.bot_a_virtual_usd / state.bot_a_cycle_target) * 100 : 0;
 
       return {
         active: true,
-        balance: state.botA_virtual_usd,
-        cycle: state.botA_cycle_number,
-        target: state.botA_cycle_target,
+        balance: state.bot_a_virtual_usd,
+        cycle: state.bot_a_cycle_number,
+        target: state.bot_a_cycle_target,
         progress,
         mcs,
         trading: mcs >= this.MIN_MCS_FOR_TRADING,

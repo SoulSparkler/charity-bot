@@ -22,14 +22,42 @@ async function startWorker() {
   try {
     console.log('🤖 Worker service starting...');
     
-    // Test database connection
-    await testConnection();
+    // CRITICAL: Test database connection first
+    console.log('🔌 Testing database connection...');
+    const dbConnected = await testConnection();
+    if (!dbConnected) {
+      console.error('❌ Database connection failed - BLOCKING STARTUP');
+      throw new Error('Database connection required for safe operation');
+    }
     console.log('✅ Database connection verified');
 
-    // Initialize database schema BEFORE any services that use DB
-    console.log('📦 Initializing database schema...');
-    await initializeDatabase();
-    console.log('[DB] Schema initialized');
+    // CRITICAL: Initialize database schema BEFORE any services that use DB
+    console.log('📦 Initializing database schema with safety checks...');
+    try {
+      await initializeDatabase();
+      console.log('[DB] ✅ Schema initialized - DATABASE SAFE FOR TRADING');
+    } catch (error) {
+      console.error('[DB] ❌ Database initialization failed - BLOCKING STARTUP');
+      console.error('[DB] 🚫 TRADING BLOCKED - Database schema incomplete or invalid');
+      throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // CRITICAL: Verify database readiness before allowing any bot operations
+    console.log('🔍 Verifying database readiness for trading...');
+    try {
+      // Test a critical query that bots will use
+      const { query } = await import('./db/db');
+      const verificationResult = await query(`
+        SELECT bot_b_enabled, bot_b_triggered
+        FROM bot_state
+        LIMIT 1
+      `);
+      console.log('✅ Database verification passed - bots can access required columns');
+    } catch (error) {
+      console.error('❌ Database verification failed - BLOCKING TRADING');
+      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Database schema verification failed');
+      throw new Error(`Database verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 
     // Ensure start snapshot exists (for P/L calculations)
     console.log('📊 Checking start snapshot...');
@@ -38,7 +66,7 @@ async function startWorker() {
       return balance;
     });
 
-    // Initialize services (AFTER database schema is ready)
+    // Initialize services (AFTER database schema is verified as safe)
     try {
       await sentimentService.calculateMCS();
       await krakenService.getTicker(['BTCUSD', 'ETHUSD']);
@@ -128,10 +156,13 @@ async function startWorker() {
     console.log('📊 Sentiment: Every hour');
     console.log('📈 Market data: Every 2 minutes');
     console.log('📸 Snapshots: Daily/Weekly/Monthly at 00:00 UTC');
+    console.log('🛡️  Database schema verified - SAFE FOR LIVE TRADING');
+    console.log('✅ Kraken LIVE MODE ENABLED - All safety checks passed');
     console.log('⏰ Worker is now monitoring and trading automatically');
 
   } catch (error) {
     console.error('❌ Failed to start worker service:', error);
+    console.error('🚫 TRADING BLOCKED - Startup failed due to safety checks');
     process.exit(1);
   }
 }

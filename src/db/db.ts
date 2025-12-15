@@ -121,70 +121,114 @@ export async function initializeDatabase(): Promise<void> {
     await query(schema);
     console.log("[DB] PostgreSQL schema initialized");
 
-    // CRITICAL: Apply bot_state column migrations BEFORE any bot queries
-    // This ensures the columns exist before bots try to access them
-    console.log("[DB] Applying bot_state column migrations...");
+    // CRITICAL: Apply comprehensive bot_state column migrations BEFORE any bot queries
+    // This ensures all required columns exist before bots try to access them
+    console.log("[DB] Applying comprehensive bot_state column migrations...");
+
+    // Migration 1: Add bot_b_enabled column if it doesn't exist
+    try {
+      await query(`
+        DO $$
+        BEGIN
+          -- Check if bot_state table exists, if not create it with all columns
+          IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_state') THEN
+            CREATE TABLE bot_state (
+              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+              bot_a_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
+              bot_b_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+              bot_a_cycle_number INTEGER NOT NULL DEFAULT 1,
+              bot_a_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
+              bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+              bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE,
+              last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            RAISE NOTICE 'Created bot_state table with all required columns';
+          END IF;
+
+          -- Add bot_b_enabled column if missing
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'bot_state'
+            AND column_name = 'bot_b_enabled'
+          ) THEN
+            ALTER TABLE bot_state ADD COLUMN bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+            RAISE NOTICE 'Added bot_b_enabled column to bot_state';
+          ELSE
+            RAISE NOTICE 'bot_b_enabled column already exists';
+          END IF;
+
+          -- Add bot_b_triggered column if missing
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'bot_state'
+            AND column_name = 'bot_b_triggered'
+          ) THEN
+            ALTER TABLE bot_state ADD COLUMN bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE;
+            RAISE NOTICE 'Added bot_b_triggered column to bot_state';
+          ELSE
+            RAISE NOTICE 'bot_b_triggered column already exists';
+          END IF;
+
+          -- Ensure we have at least one row in bot_state
+          IF NOT EXISTS (SELECT 1 FROM bot_state) THEN
+            INSERT INTO bot_state (
+              bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
+              bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+            ) VALUES (230.00, 0.00, 1, 200.00, FALSE, FALSE);
+            RAISE NOTICE 'Inserted initial bot_state row';
+          END IF;
+        END
+        $$;
+      `);
+      console.log("[DB] bot_state column migration completed successfully");
+    } catch (error) {
+      console.error("[DB] Failed to migrate bot_state columns:", error);
+      throw new Error(`Critical database migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // CRITICAL: Verify all required columns exist before allowing any bot operations
+    console.log("[DB] Verifying database schema integrity...");
     
     try {
-      // Add botB_enabled column if it doesn't exist
-      await query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'bot_state'
-            AND column_name = 'botB_enabled'
-          ) THEN
-            ALTER TABLE bot_state ADD COLUMN botB_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-            RAISE NOTICE 'Added botB_enabled column to bot_state';
-          ELSE
-            RAISE NOTICE 'botB_enabled column already exists';
-          END IF;
-        END
-        $$;
+      const verificationResult = await query(`
+        SELECT
+          COUNT(*) as column_count
+        FROM information_schema.columns
+        WHERE table_name = 'bot_state'
+          AND column_name IN (
+            'bot_a_virtual_usd', 'bot_b_virtual_usd', 'bot_a_cycle_number',
+            'bot_a_cycle_target', 'bot_b_enabled', 'bot_b_triggered'
+          )
       `);
-      console.log("[DB] botB_enabled column migration completed");
+
+      const requiredColumns = 6; // We expect 6 columns
+      const actualColumns = parseInt(verificationResult.rows[0]?.column_count) || 0;
+      
+      if (actualColumns < requiredColumns) {
+        throw new Error(`Schema verification failed: Expected ${requiredColumns} columns, found ${actualColumns}`);
+      }
+
+      console.log(`[DB] Schema verification passed: ${actualColumns}/${requiredColumns} required columns present`);
     } catch (error) {
-      console.error("[DB] Failed to migrate botB_enabled column:", error);
-      throw error;
+      console.error("[DB] Failed to verify database schema:", error);
+      throw new Error(`Database schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
+    // Test query to ensure columns are accessible
     try {
-      // Add botB_triggered column if it doesn't exist
-      await query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'bot_state'
-            AND column_name = 'botB_triggered'
-          ) THEN
-            ALTER TABLE bot_state ADD COLUMN botB_triggered BOOLEAN NOT NULL DEFAULT FALSE;
-            RAISE NOTICE 'Added botB_triggered column to bot_state';
-          ELSE
-            RAISE NOTICE 'botB_triggered column already exists';
-          END IF;
-        END
-        $$;
-      `);
-      console.log("[DB] botB_triggered column migration completed");
+      await query("SELECT bot_b_enabled, bot_b_triggered FROM bot_state LIMIT 1");
+      console.log("[DB] Column accessibility test passed");
     } catch (error) {
-      console.error("[DB] Failed to migrate botB_triggered column:", error);
-      throw error;
+      console.error("[DB] Failed column accessibility test:", error);
+      throw new Error("Database columns not accessible - migration incomplete");
     }
 
-    // Verify columns exist by testing a query
-    try {
-      await query("SELECT botB_enabled, botB_triggered FROM bot_state LIMIT 1");
-      console.log("[DB] Verified bot_state columns exist and are accessible");
-    } catch (error) {
-      console.error("[DB] Failed to verify bot_state columns:", error);
-      throw new Error("Database migration failed - bot_state columns not accessible");
-    }
-
-    console.log("[DB] Database initialization completed successfully");
+    console.log("[DB] ✅ Database initialization completed successfully - SAFE TO START TRADING");
   } catch (error) {
-    console.error("[DB] Failed to initialize database:", error);
+    console.error("[DB] ❌ Failed to initialize database:", error);
+    console.error("[DB] 🚫 BLOCKING TRADING - Database schema incomplete");
     throw error;
   }
 }

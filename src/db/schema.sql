@@ -6,14 +6,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Bot state table - stores virtual balances and cycle tracking
+-- Using lowercase column names to avoid PostgreSQL case sensitivity issues
 CREATE TABLE IF NOT EXISTS bot_state (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    botA_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
-    botB_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    botA_cycle_number INTEGER NOT NULL DEFAULT 1,
-    botA_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
-    botB_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    botB_triggered BOOLEAN NOT NULL DEFAULT FALSE,
+    bot_a_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
+    bot_b_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    bot_a_cycle_number INTEGER NOT NULL DEFAULT 1,
+    bot_a_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
+    bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE,
     last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -35,8 +36,8 @@ CREATE TRIGGER update_bot_state_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Insert initial bot state if not exists
-INSERT INTO bot_state (botA_virtual_usd, botB_virtual_usd, botA_cycle_number, botA_cycle_target, botB_enabled, botB_triggered)
+-- Insert initial bot state if not exists (using lowercase column names)
+INSERT INTO bot_state (bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered)
 SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
 WHERE NOT EXISTS (SELECT 1 FROM bot_state);
 
