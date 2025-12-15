@@ -275,6 +275,36 @@ async function executePhase4InitializeData(): Promise<void> {
   console.log("[DB] 📊 PHASE 4: Initializing data...");
   
   try {
+    // Create configuration table if it doesn't exist (moved from schema.sql)
+    await query(`
+      CREATE TABLE IF NOT EXISTS configuration (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        key TEXT UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+
+    // Create trigger for configuration table
+    await query(`
+      DROP TRIGGER IF EXISTS update_configuration_updated_at ON configuration;
+      CREATE TRIGGER update_configuration_updated_at
+          BEFORE UPDATE ON configuration
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `);
+
+    // Create trigger for bot_state table
+    await query(`
+      DROP TRIGGER IF EXISTS update_bot_state_updated_at ON bot_state;
+      CREATE TRIGGER update_bot_state_updated_at
+          BEFORE UPDATE ON bot_state
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `);
+
     // Add defaults and constraints NOW that schema is verified
     await query(`
       DO $$
@@ -308,7 +338,7 @@ async function executePhase4InitializeData(): Promise<void> {
       $$;
     `);
 
-    // Insert initial data ONLY NOW that schema is fully verified
+    // Insert initial bot state data ONLY NOW that schema is fully verified
     await query(`
       INSERT INTO bot_state (
         bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
@@ -316,6 +346,17 @@ async function executePhase4InitializeData(): Promise<void> {
       )
       SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
       WHERE NOT EXISTS (SELECT 1 FROM bot_state);
+    `);
+
+    // Insert default configuration values (moved from schema.sql)
+    await query(`
+      INSERT INTO configuration (key, value, description) VALUES 
+          ('cycle_seed_amount', '30', 'Seed amount for new Bot A cycles'),
+          ('botB_transfer_amount', '200', 'Amount transferred from Bot A to Bot B per cycle'),
+          ('max_daily_trades_botA', '6', 'Maximum daily trades for Bot A when MCS >= 0.8'),
+          ('min_mcs_for_trading', '0.4', 'Minimum MCS required for Bot A trading'),
+          ('botB_min_mcs', '0.5', 'Minimum MCS required for Bot B trading')
+      ON CONFLICT (key) DO NOTHING;
     `);
 
     console.log("[DB] ✅ PHASE 4 COMPLETE: Data initialization completed");
