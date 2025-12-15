@@ -270,12 +270,13 @@ async function executePhase3VerifySchema(): Promise<void> {
 
 /**
  * PHASE 4: Initialize data (ONLY after schema verification passes)
+ * CRITICAL: Correct execution order to avoid PostgreSQL error 23502
  */
 async function executePhase4InitializeData(): Promise<void> {
   console.log("[DB] 📊 PHASE 4: Initializing data...");
   
   try {
-    // Create configuration table if it doesn't exist (moved from schema.sql)
+    // Step 1: Create configuration table if it doesn't exist
     await query(`
       CREATE TABLE IF NOT EXISTS configuration (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -287,7 +288,7 @@ async function executePhase4InitializeData(): Promise<void> {
       );
     `);
 
-    // Create trigger for configuration table
+    // Step 2: Create triggers for both tables
     await query(`
       DROP TRIGGER IF EXISTS update_configuration_updated_at ON configuration;
       CREATE TRIGGER update_configuration_updated_at
@@ -296,7 +297,6 @@ async function executePhase4InitializeData(): Promise<void> {
           EXECUTE FUNCTION update_updated_at_column();
     `);
 
-    // Create trigger for bot_state table
     await query(`
       DROP TRIGGER IF EXISTS update_bot_state_updated_at ON bot_state;
       CREATE TRIGGER update_bot_state_updated_at
@@ -305,11 +305,11 @@ async function executePhase4InitializeData(): Promise<void> {
           EXECUTE FUNCTION update_updated_at_column();
     `);
 
-    // Add defaults and constraints NOW that schema is verified
+    // Step 3: Add defaults (but NOT constraints yet)
     await query(`
       DO $$
       BEGIN
-        -- Add defaults and constraints
+        -- Add defaults only (no NOT NULL constraints yet)
         ALTER TABLE bot_state ALTER COLUMN id SET DEFAULT uuid_generate_v4();
         ALTER TABLE bot_state ALTER COLUMN bot_a_virtual_usd SET DEFAULT 230.00;
         ALTER TABLE bot_state ALTER COLUMN bot_b_virtual_usd SET DEFAULT 0.00;
@@ -321,7 +321,50 @@ async function executePhase4InitializeData(): Promise<void> {
         ALTER TABLE bot_state ALTER COLUMN created_at SET DEFAULT NOW();
         ALTER TABLE bot_state ALTER COLUMN updated_at SET DEFAULT NOW();
 
-        -- Set NOT NULL constraints
+        RAISE NOTICE 'Added defaults only (NOT NULL constraints pending)';
+      END
+      $$;
+    `);
+
+    // Step 4: INSERT initial bot state data (if doesn't exist)
+    await query(`
+      INSERT INTO bot_state (
+        bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
+        bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+      )
+      SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
+      WHERE NOT EXISTS (SELECT 1 FROM bot_state);
+    `);
+
+    // Step 5: Backfill any NULL values to defaults BEFORE setting NOT NULL constraints
+    await query(`
+      UPDATE bot_state 
+      SET 
+        bot_a_virtual_usd = COALESCE(bot_a_virtual_usd, 230.00),
+        bot_b_virtual_usd = COALESCE(bot_b_virtual_usd, 0.00),
+        bot_a_cycle_number = COALESCE(bot_a_cycle_number, 1),
+        bot_a_cycle_target = COALESCE(bot_a_cycle_target, 200.00),
+        bot_b_enabled = COALESCE(bot_b_enabled, FALSE),
+        bot_b_triggered = COALESCE(bot_b_triggered, FALSE),
+        last_reset = COALESCE(last_reset, NOW()),
+        created_at = COALESCE(created_at, NOW()),
+        updated_at = COALESCE(updated_at, NOW())
+      WHERE bot_a_virtual_usd IS NULL 
+         OR bot_b_virtual_usd IS NULL 
+         OR bot_a_cycle_number IS NULL 
+         OR bot_a_cycle_target IS NULL 
+         OR bot_b_enabled IS NULL 
+         OR bot_b_triggered IS NULL 
+         OR last_reset IS NULL 
+         OR created_at IS NULL 
+         OR updated_at IS NULL;
+    `);
+
+    // Step 6: Only NOW set NOT NULL constraints (after backfilling NULLs)
+    await query(`
+      DO $$
+      BEGIN
+        -- Set NOT NULL constraints ONLY after backfilling
         ALTER TABLE bot_state ALTER COLUMN id SET NOT NULL;
         ALTER TABLE bot_state ALTER COLUMN bot_a_virtual_usd SET NOT NULL;
         ALTER TABLE bot_state ALTER COLUMN bot_b_virtual_usd SET NOT NULL;
@@ -333,22 +376,12 @@ async function executePhase4InitializeData(): Promise<void> {
         ALTER TABLE bot_state ALTER COLUMN created_at SET NOT NULL;
         ALTER TABLE bot_state ALTER COLUMN updated_at SET NOT NULL;
 
-        RAISE NOTICE 'Added defaults and constraints';
+        RAISE NOTICE 'NOT NULL constraints applied after backfilling';
       END
       $$;
     `);
 
-    // Insert initial bot state data ONLY NOW that schema is fully verified
-    await query(`
-      INSERT INTO bot_state (
-        bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
-        bot_a_cycle_target, bot_b_enabled, bot_b_triggered
-      )
-      SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
-      WHERE NOT EXISTS (SELECT 1 FROM bot_state);
-    `);
-
-    // Insert default configuration values (moved from schema.sql)
+    // Step 7: Insert default configuration values (moved from schema.sql)
     await query(`
       INSERT INTO configuration (key, value, description) VALUES 
           ('cycle_seed_amount', '30', 'Seed amount for new Bot A cycles'),
@@ -359,7 +392,7 @@ async function executePhase4InitializeData(): Promise<void> {
       ON CONFLICT (key) DO NOTHING;
     `);
 
-    console.log("[DB] ✅ PHASE 4 COMPLETE: Data initialization completed");
+    console.log("[DB] ✅ PHASE 4 COMPLETE: Data initialization completed safely");
   } catch (error) {
     console.error("[DB] ❌ PHASE 4 FAILED: Data initialization failed:", error);
     throw error;
