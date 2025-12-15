@@ -43,6 +43,11 @@ class KrakenService {
   private httpClient: AxiosInstance;
   private lastRequestTime: number = 0;
   private readonly minRequestInterval: number = 1000; // 1 second between requests
+  
+  // Internal caching to prevent duplicate API calls
+  private balanceCache: { balances: KrakenBalance; timestamp: number } | null = null;
+  private tickerCache: { ticker: { [pair: string]: KrakenTicker }; timestamp: number } | null = null;
+  private readonly CACHE_TTL = 15000; // 15 seconds cache for balances and ticker data
 
   constructor() {
     this.apiKey = process.env.KRAKEN_API_KEY || '';
@@ -91,8 +96,13 @@ class KrakenService {
     if (!this.apiSecret) {
       krakenLogger.warn('No Kraken API secret provided. KrakenService will not work properly.');
     }
+  }
 
-    krakenLogger.info('🚀 Running in LIVE MODE - using real Kraken API');
+  /**
+   * Initialize LIVE MODE logging - called after schema verification
+   */
+  initializeLiveMode(): void {
+    krakenLogger.info('🚀 KRAKEN LIVE MODE ENABLED - using real Kraken API');
   }
 
   /**
@@ -159,6 +169,13 @@ class KrakenService {
    */
   async getBalances(): Promise<KrakenBalance> {
     try {
+      // Check cache first
+      const now = Date.now();
+      if (this.balanceCache && (now - this.balanceCache.timestamp) < this.CACHE_TTL) {
+        krakenLogger.debug('Using cached balance data');
+        return this.balanceCache.balances;
+      }
+      
       krakenLogger.info('Fetching account balances from Kraken (Unified account mode)...');
       
       // Asset name mapping for Kraken codes to standard codes
@@ -222,6 +239,9 @@ class KrakenService {
         }
         
         krakenLogger.info('✅ TradeBalance returned individual crypto balances, using this data');
+        
+        // Cache the result
+        this.balanceCache = { balances, timestamp: now };
         return balances;
         
       } catch (tradeBalanceError) {
@@ -256,6 +276,9 @@ class KrakenService {
         // Log all final balances before returning
         krakenLogger.info(`📊 Final balances from BalanceEx: ${JSON.stringify(balances)}`);
         krakenLogger.info(`Retrieved ${Object.keys(balances).length} non-zero balances via BalanceEx`);
+        
+        // Cache the result
+        this.balanceCache = { balances, timestamp: now };
         return balances;
       }
       
@@ -362,6 +385,19 @@ class KrakenService {
    */
   async getTicker(pairs: string[]): Promise<{ [pair: string]: KrakenTicker }> {
     try {
+      // Check cache first for same pairs
+      const now = Date.now();
+      const pairsKey = pairs.sort().join(',');
+      if (this.tickerCache && (now - this.tickerCache.timestamp) < this.CACHE_TTL) {
+        // Check if cached data contains all requested pairs
+        const cachedPairs = Object.keys(this.tickerCache.ticker);
+        const allPairsCached = pairs.every(pair => cachedPairs.includes(pair));
+        if (allPairsCached) {
+          krakenLogger.debug('Using cached ticker data');
+          return this.tickerCache.ticker;
+        }
+      }
+      
       // Convert pairs to Kraken format (remove / and use proper format)
       const krakenPairs = pairs.map(pair => pair.replace('/', '')).join(',');
       const response = await this.httpClient.get(`/0/public/Ticker?pair=${krakenPairs}`);
@@ -392,6 +428,9 @@ class KrakenService {
       }
 
       krakenLogger.info(`Retrieved ticker data for ${Object.keys(result).length} pairs`);
+      
+      // Cache the result
+      this.tickerCache = { ticker: result, timestamp: now };
       return result;
       
     } catch (error) {

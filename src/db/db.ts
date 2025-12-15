@@ -253,7 +253,13 @@ async function executePhase3VerifySchema(): Promise<void> {
       throw new Error(`CRITICAL: Canonical schema validation failed. Missing columns: ${missingColumns}`);
     }
 
-    console.log(`[DB] ✅ PHASE 3 VERIFIED: ${existingColumns.length}/${BOT_STATE_COLUMN_NAMES.length} canonical columns present`);
+    const canonicalColumnsPresent = BOT_STATE_COLUMN_NAMES.filter(col => existingColumns.includes(col)).length;
+    const nonCanonicalColumns = existingColumns.filter(col => !BOT_STATE_COLUMN_NAMES.includes(col));
+    
+    console.log(`[DB] ✅ PHASE 3 VERIFIED: ${canonicalColumnsPresent}/${BOT_STATE_COLUMN_NAMES.length} canonical columns present`);
+    if (nonCanonicalColumns.length > 0) {
+      console.log(`[DB] ℹ️  Additional columns found (non-canonical): ${nonCanonicalColumns.join(', ')}`);
+    }
 
     // Test accessibility with real bot query
     await query(`

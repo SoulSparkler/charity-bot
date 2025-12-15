@@ -17,12 +17,40 @@ dotenv.config();
  * - Bot B: Conservative donation bot (every 15 minutes)
  */
 
+// Advanced balance caching to prevent duplicate API calls
+let balanceCache: {
+  balance: number;
+  timestamp: number;
+  callCount: number;
+} | null = null;
+const BALANCE_CACHE_TTL = 30000; // 30 seconds
+
+async function getCachedBalance(): Promise<number> {
+  const now = Date.now();
+  
+  // Return cached balance if still valid
+  if (balanceCache && (now - balanceCache.timestamp) < BALANCE_CACHE_TTL) {
+    balanceCache.callCount++;
+    console.log(`📊 Using cached balance: $${balanceCache.balance.toFixed(2)} (call #${balanceCache.callCount})`);
+    return balanceCache.balance;
+  }
+  
+  // Fetch fresh balance and cache it
+  console.log('📊 Fetching fresh balance from Kraken...');
+  const balance = await krakenService.getTotalUSDValue();
+  balanceCache = { balance, timestamp: now, callCount: 1 };
+  console.log(`📊 Fresh balance cached: $${balance.toFixed(2)}`);
+  return balance;
+}
+
 // Start worker service
 async function startWorker() {
   try {
     console.log('🤖 Worker service starting...');
+    console.log('');
     
-    // CRITICAL: Test database connection first
+    // PHASE 1: Database ready
+    console.log('📋 PHASE 1: Database ready');
     console.log('🔌 Testing database connection...');
     const dbConnected = await testConnection();
     if (!dbConnected) {
@@ -30,8 +58,10 @@ async function startWorker() {
       throw new Error('Database connection required for safe operation');
     }
     console.log('✅ Database connection verified');
-
-    // CRITICAL: Database initialization with strict phase separation
+    console.log('');
+    
+    // PHASE 2: Schema verified
+    console.log('📋 PHASE 2: Schema verified');
     console.log('🔧 Initializing database with strict phase separation...');
     console.log('🚫 NO TRADING OPERATIONS UNTIL PHASE 3 VERIFICATION PASSES');
     try {
@@ -40,12 +70,14 @@ async function startWorker() {
       console.log('🛡️ SCHEMA VERIFIED - TRADING NOW SAFE');
     } catch (error) {
       console.error('❌ Database initialization failed - BLOCKING STARTUP');
-      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Schema initialization failed');
+      console.error('🚫 TRADING BLOCKED - Schema initialization failed');
       console.error('💥 REASON:', error instanceof Error ? error.message : 'Unknown error');
       throw error;
     }
-
-    // CRITICAL: Additional verification that schema is ready for bot operations
+    console.log('');
+    
+    // PHASE 3: Trading enabled
+    console.log('📋 PHASE 3: Trading enabled');
     console.log('🔍 Final verification: Testing bot query compatibility...');
     try {
       const { query } = await import('./db/db');
@@ -58,17 +90,25 @@ async function startWorker() {
       `);
       
       console.log('✅ Bot query test passed - All bot operations are safe');
-      console.log('🛡️ KRAKEN LIVE MODE ENABLED - All safety checks passed');
+      console.log('✅ TRADING ENABLED - All safety checks passed');
     } catch (error) {
       console.error('❌ Bot query test failed - BLOCKING TRADING');
-      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Bot operations would fail');
+      console.error('🚫 TRADING BLOCKED - Bot operations would fail');
       throw new Error(`Bot query test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
+    console.log('');
+    
+    // PHASE 4: Kraken LIVE MODE
+    console.log('📋 PHASE 4: Kraken LIVE MODE');
+    
+    // Initialize Kraken LIVE MODE only after schema verification completes
+    krakenService.initializeLiveMode();
+    console.log('✅ KRAKEN LIVE MODE INITIALIZED - All safety checks passed');
+    
     // Ensure start snapshot exists (for P/L calculations)
     console.log('📊 Checking start snapshot...');
     await ensureStartSnapshot(async () => {
-      const balance = await krakenService.getTotalUSDValue();
+      const balance = await getCachedBalance();
       return balance;
     });
 
@@ -80,6 +120,7 @@ async function startWorker() {
     } catch (error) {
       console.warn('⚠️  Some services failed to initialize:', error);
     }
+    console.log('');
 
     // Start Bot A trading cycle (every 5 minutes)
     setInterval(async () => {
@@ -127,7 +168,7 @@ async function startWorker() {
     cron.schedule('0 0 * * *', async () => {
       try {
         console.log('📸 Taking daily balance snapshot...');
-        const balance = await krakenService.getTotalUSDValue();
+        const balance = await getCachedBalance();
         await saveSnapshot('daily', balance);
       } catch (error) {
         console.error('❌ Daily snapshot failed:', error);
@@ -138,7 +179,7 @@ async function startWorker() {
     cron.schedule('0 0 * * 1', async () => {
       try {
         console.log('📸 Taking weekly balance snapshot...');
-        const balance = await krakenService.getTotalUSDValue();
+        const balance = await getCachedBalance();
         await saveSnapshot('weekly', balance);
       } catch (error) {
         console.error('❌ Weekly snapshot failed:', error);
@@ -149,7 +190,7 @@ async function startWorker() {
     cron.schedule('0 0 1 * *', async () => {
       try {
         console.log('📸 Taking monthly balance snapshot...');
-        const balance = await krakenService.getTotalUSDValue();
+        const balance = await getCachedBalance();
         await saveSnapshot('monthly', balance);
       } catch (error) {
         console.error('❌ Monthly snapshot failed:', error);
@@ -157,15 +198,25 @@ async function startWorker() {
     }, { timezone: 'UTC' });
 
     console.log('🤖 Worker service started successfully');
-    console.log('📅 Bot A: Every 5 minutes');
-    console.log('📅 Bot B: Every 15 minutes');
-    console.log('📊 Sentiment: Every hour');
-    console.log('📈 Market data: Every 2 minutes');
-    console.log('📸 Snapshots: Daily/Weekly/Monthly at 00:00 UTC');
-    console.log('🛡️  Database schema verified - SAFE FOR LIVE TRADING');
+    console.log('');
+    console.log('📅 STARTUP SEQUENCE COMPLETE:');
+    console.log('   ✅ PHASE 1: Database ready');
+    console.log('   ✅ PHASE 2: Schema verified');
+    console.log('   ✅ PHASE 3: Trading enabled');
+    console.log('   ✅ PHASE 4: Kraken LIVE MODE');
+    console.log('');
+    console.log('📅 SCHEDULES:');
+    console.log('   Bot A: Every 5 minutes');
+    console.log('   Bot B: Every 15 minutes');
+    console.log('   Sentiment: Every hour');
+    console.log('   Market data: Every 2 minutes');
+    console.log('   Snapshots: Daily/Weekly/Monthly at 00:00 UTC');
+    console.log('');
+    console.log('🛡️  All safety checks passed - SAFE FOR LIVE TRADING');
     console.log('⏰ Worker is now monitoring and trading automatically');
 
   } catch (error) {
+    console.error('');
     console.error('❌ Failed to start worker service:', error);
     console.error('🚫 TRADING BLOCKED - Startup failed due to safety checks');
     process.exit(1);
