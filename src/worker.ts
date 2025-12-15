@@ -42,21 +42,39 @@ async function startWorker() {
       throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // CRITICAL: Verify database readiness before allowing any bot operations
-    console.log('🔍 Verifying database readiness for trading...');
+    // CRITICAL: Verify canonical database schema before allowing any bot operations
+    console.log('🔍 Verifying canonical database schema...');
     try {
-      // Test a critical query that bots will use
       const { query } = await import('./db/db');
+      const { BOT_STATE_COLUMN_NAMES } = await import('./db/schema-constants');
+      
+      // Verify all canonical columns exist
       const verificationResult = await query(`
-        SELECT bot_b_enabled, bot_b_triggered
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'bot_state'
+        ORDER BY column_name
+      `);
+
+      const existingColumns = verificationResult.rows.map((row: any) => row.column_name);
+      const missingColumns = BOT_STATE_COLUMN_NAMES.filter(col => !existingColumns.includes(col));
+      
+      if (missingColumns.length > 0) {
+        throw new Error(`Missing canonical columns: ${missingColumns.join(', ')}`);
+      }
+
+      // Test critical bot query
+      await query(`
+        SELECT bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered
         FROM bot_state
         LIMIT 1
       `);
-      console.log('✅ Database verification passed - bots can access required columns');
+      
+      console.log('✅ Canonical database schema verification passed - ALL REQUIRED COLUMNS PRESENT');
     } catch (error) {
-      console.error('❌ Database verification failed - BLOCKING TRADING');
-      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Database schema verification failed');
-      throw new Error(`Database verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ Canonical database verification failed - BLOCKING TRADING');
+      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Canonical schema verification failed');
+      throw new Error(`Canonical schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Ensure start snapshot exists (for P/L calculations)

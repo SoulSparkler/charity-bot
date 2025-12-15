@@ -2,6 +2,7 @@ import { Pool, PoolClient } from "pg";
 import * as fs from "fs";
 import * as path from "path";
 import dotenv from "dotenv";
+import { BOT_STATE_REQUIRED_COLUMNS, BOT_STATE_COLUMN_NAMES, validateBotStateSchema } from "./schema-constants";
 
 dotenv.config();
 
@@ -101,6 +102,10 @@ export async function withTransaction<T>(
   }
 }
 
+/**
+ * Comprehensive database initialization using canonical schema
+ * This function ensures ALL required columns exist before any bot operations
+ */
 export async function initializeDatabase(): Promise<void> {
   // Check if we should use mock database mode
   if (process.env.USE_MOCK_DB === 'true') {
@@ -113,123 +118,145 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   try {
-    console.log("[DB] Starting database initialization...");
+    console.log("[DB] Starting comprehensive database initialization...");
 
-    // First, ensure schema is applied
+    // Step 1: Apply base schema
     const schemaPath = path.join(__dirname, "schema.sql");
     const schema = fs.readFileSync(schemaPath, "utf8");
     await query(schema);
-    console.log("[DB] PostgreSQL schema initialized");
+    console.log("[DB] Base PostgreSQL schema applied");
 
-    // CRITICAL: Apply comprehensive bot_state column migrations BEFORE any bot queries
-    // This ensures all required columns exist before bots try to access them
+    // Step 2: Comprehensive bot_state column migration using canonical schema
     console.log("[DB] Applying comprehensive bot_state column migrations...");
+    await applyComprehensiveBotStateMigration();
 
-    // Migration 1: Add bot_b_enabled column if it doesn't exist
-    try {
-      await query(`
-        DO $$
-        BEGIN
-          -- Check if bot_state table exists, if not create it with all columns
-          IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_state') THEN
-            CREATE TABLE bot_state (
-              id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-              bot_a_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
-              bot_b_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-              bot_a_cycle_number INTEGER NOT NULL DEFAULT 1,
-              bot_a_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
-              bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-              bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE,
-              last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-            RAISE NOTICE 'Created bot_state table with all required columns';
-          END IF;
+    // Step 3: Verify canonical schema completeness
+    console.log("[DB] Verifying canonical schema completeness...");
+    await verifyCanonicalSchema();
 
-          -- Add bot_b_enabled column if missing
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'bot_state'
-            AND column_name = 'bot_b_enabled'
-          ) THEN
-            ALTER TABLE bot_state ADD COLUMN bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-            RAISE NOTICE 'Added bot_b_enabled column to bot_state';
-          ELSE
-            RAISE NOTICE 'bot_b_enabled column already exists';
-          END IF;
-
-          -- Add bot_b_triggered column if missing
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'bot_state'
-            AND column_name = 'bot_b_triggered'
-          ) THEN
-            ALTER TABLE bot_state ADD COLUMN bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE;
-            RAISE NOTICE 'Added bot_b_triggered column to bot_state';
-          ELSE
-            RAISE NOTICE 'bot_b_triggered column already exists';
-          END IF;
-
-          -- Ensure we have at least one row in bot_state
-          IF NOT EXISTS (SELECT 1 FROM bot_state) THEN
-            INSERT INTO bot_state (
-              bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
-              bot_a_cycle_target, bot_b_enabled, bot_b_triggered
-            ) VALUES (230.00, 0.00, 1, 200.00, FALSE, FALSE);
-            RAISE NOTICE 'Inserted initial bot_state row';
-          END IF;
-        END
-        $$;
-      `);
-      console.log("[DB] bot_state column migration completed successfully");
-    } catch (error) {
-      console.error("[DB] Failed to migrate bot_state columns:", error);
-      throw new Error(`Critical database migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-
-    // CRITICAL: Verify all required columns exist before allowing any bot operations
-    console.log("[DB] Verifying database schema integrity...");
-    
-    try {
-      const verificationResult = await query(`
-        SELECT
-          COUNT(*) as column_count
-        FROM information_schema.columns
-        WHERE table_name = 'bot_state'
-          AND column_name IN (
-            'bot_a_virtual_usd', 'bot_b_virtual_usd', 'bot_a_cycle_number',
-            'bot_a_cycle_target', 'bot_b_enabled', 'bot_b_triggered'
-          )
-      `);
-
-      const requiredColumns = 6; // We expect 6 columns
-      const actualColumns = parseInt(verificationResult.rows[0]?.column_count) || 0;
-      
-      if (actualColumns < requiredColumns) {
-        throw new Error(`Schema verification failed: Expected ${requiredColumns} columns, found ${actualColumns}`);
-      }
-
-      console.log(`[DB] Schema verification passed: ${actualColumns}/${requiredColumns} required columns present`);
-    } catch (error) {
-      console.error("[DB] Failed to verify database schema:", error);
-      throw new Error(`Database schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-
-    // Test query to ensure columns are accessible
-    try {
-      await query("SELECT bot_b_enabled, bot_b_triggered FROM bot_state LIMIT 1");
-      console.log("[DB] Column accessibility test passed");
-    } catch (error) {
-      console.error("[DB] Failed column accessibility test:", error);
-      throw new Error("Database columns not accessible - migration incomplete");
-    }
-
-    console.log("[DB] ✅ Database initialization completed successfully - SAFE TO START TRADING");
+    console.log("[DB] ✅ Database initialization completed successfully - CANONICAL SCHEMA VERIFIED");
   } catch (error) {
     console.error("[DB] ❌ Failed to initialize database:", error);
     console.error("[DB] 🚫 BLOCKING TRADING - Database schema incomplete");
     throw error;
+  }
+}
+
+/**
+ * Apply comprehensive bot_state migration covering ALL canonical columns
+ */
+async function applyComprehensiveBotStateMigration(): Promise<void> {
+  const migrationSQL = `
+    DO $$
+    DECLARE
+      column_record RECORD;
+      missing_columns TEXT[] := ARRAY[]::TEXT[];
+    BEGIN
+      RAISE NOTICE 'Starting comprehensive bot_state migration...';
+      
+      -- Create table if it doesn't exist with canonical schema
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_state') THEN
+        RAISE NOTICE 'Creating bot_state table with canonical schema...';
+        CREATE TABLE bot_state (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          bot_a_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
+          bot_b_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+          bot_a_cycle_number INTEGER NOT NULL DEFAULT 1,
+          bot_a_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
+          bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE,
+          last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        RAISE NOTICE 'Created bot_state table with canonical schema';
+      END IF;
+
+      -- Migrate each canonical column
+      ${BOT_STATE_REQUIRED_COLUMNS.map(col => `
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'bot_state'
+          AND column_name = '${col.name}'
+        ) THEN
+          ALTER TABLE bot_state ADD COLUMN ${col.name} ${col.type} NOT NULL DEFAULT ${col.default};
+          RAISE NOTICE 'Added column: ${col.name}';
+          missing_columns := array_append(missing_columns, '${col.name}');
+        ELSE
+          RAISE NOTICE 'Column already exists: ${col.name}';
+        END IF;
+      `).join('\n      ')}
+
+      -- Ensure at least one row exists
+      IF NOT EXISTS (SELECT 1 FROM bot_state) THEN
+        INSERT INTO bot_state (
+          bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
+          bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+        ) VALUES (230.00, 0.00, 1, 200.00, FALSE, FALSE);
+        RAISE NOTICE 'Inserted initial bot_state row';
+      END IF;
+
+      -- Report migration results
+      IF array_length(missing_columns, 1) > 0 THEN
+        RAISE NOTICE 'Migration completed. Added columns: %', array_to_string(missing_columns, ', ');
+      ELSE
+        RAISE NOTICE 'Migration completed. All canonical columns already existed.';
+      END IF;
+    END
+    $$;
+  `;
+
+  try {
+    await query(migrationSQL);
+    console.log("[DB] ✅ Comprehensive bot_state migration completed");
+  } catch (error) {
+    console.error("[DB] ❌ Comprehensive bot_state migration failed:", error);
+    throw new Error(`Bot state migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Verify that ALL canonical columns exist and are accessible
+ */
+async function verifyCanonicalSchema(): Promise<void> {
+  try {
+    // Get all existing columns in bot_state table
+    const existingColumnsResult = await query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'bot_state'
+      ORDER BY column_name
+    `);
+
+    const existingColumns = existingColumnsResult.rows.map((row: any) => row.column_name);
+    
+    // Validate against canonical schema
+    const validation = validateBotStateSchema(existingColumns);
+    
+    if (!validation.isValid) {
+      const missingColumns = validation.missingColumns.join(', ');
+      throw new Error(`Canonical schema validation failed. Missing columns: ${missingColumns}`);
+    }
+
+    console.log(`[DB] ✅ Canonical schema verification passed: ${existingColumns.length}/${BOT_STATE_COLUMN_NAMES.length} columns present`);
+
+    // Test accessibility of critical columns
+    const criticalColumns = ['bot_a_virtual_usd', 'bot_b_virtual_usd', 'bot_b_enabled', 'bot_b_triggered'];
+    const accessibilityTest = criticalColumns.every(col => existingColumns.includes(col));
+    
+    if (!accessibilityTest) {
+      throw new Error(`Critical column accessibility test failed. Expected: ${criticalColumns.join(', ')}, Found: ${existingColumns.filter(col => criticalColumns.includes(col)).join(', ')}`);
+    }
+
+    console.log("[DB] ✅ Critical column accessibility test passed");
+    
+    // Test a real query that bots will use
+    await query("SELECT bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered FROM bot_state LIMIT 1");
+    console.log("[DB] ✅ Bot query test passed - schema ready for trading");
+
+  } catch (error) {
+    console.error("[DB] ❌ Canonical schema verification failed:", error);
+    throw new Error(`Schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
