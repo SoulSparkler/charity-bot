@@ -12,188 +12,6 @@ interface KrakenStatus {
   mockMode?: boolean;
 }
 
-interface SellBTCModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSell: (usdAmount: number) => Promise<void>;
-  btcBalance: number;
-  loading: boolean;
-}
-
-function SellBTCModal({ isOpen, onClose, onSell, btcBalance, loading }: SellBTCModalProps) {
-  const [usdAmount, setUsdAmount] = useState<string>('');
-  const [error, setError] = useState<string>('');
-
-  useEffect(() => {
-    if (isOpen) {
-      setUsdAmount('');
-      setError('');
-    }
-  }, [isOpen]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    const amount = parseFloat(usdAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Please enter a valid positive number');
-      return;
-    }
-
-    if (amount < 9.20) {
-      setError('Minimum sell amount is $9.20 USD (0.0001 BTC)');
-      return;
-    }
-
-    try {
-      await onSell(amount);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    }
-  };
-
-  const handleCancel = () => {
-    setUsdAmount('');
-    setError('');
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 className="text-lg font-semibold text-white mb-4">Sell BTC</h3>
-        <p className="text-gray-400 text-sm mb-4">
-          How much USD do you want to sell from BTC?
-        </p>
-        <p className="text-gray-300 text-sm mb-4">
-          Available BTC: {btcBalance.toFixed(8)} BTC
-        </p>
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-300 text-sm font-medium mb-2">
-              USD Amount
-            </label>
-            <input
-              type="number"
-              value={usdAmount}
-              onChange={(e) => setUsdAmount(e.target.value)}
-              placeholder="Enter USD amount"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 focus rounded-md text-white:outline-none focus:ring-2 focus:ring-blue-500"
-              min="0"
-              step="0.01"
-              disabled={loading}
-            />
-            {error && (
-              <p className="text-red-400 text-sm mt-1">{error}</p>
-            )}
-          </div>
-          
-          <div className="flex space-x-3">
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !usdAmount}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Selling...' : 'Sell BTC'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-interface SimpleSellBTCModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => Promise<void>;
-}
-
-function SimpleSellBTCModal({ isOpen, onClose, onSuccess }: SimpleSellBTCModalProps) {
-  const [usdAmount, setUsdAmount] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleContinue = async () => {
-    setIsSubmitting(true);
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-      const response = await fetch(`${backendUrl}/api/sell-btc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usdAmount: Number(usdAmount) })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sell BTC');
-      }
-
-      console.log("Sell BTC success:", data);
-      await onSuccess();
-      setUsdAmount("");
-      onClose();
-    } catch (error) {
-      console.error("Sell BTC error:", error);
-      alert(error instanceof Error ? error.message : 'An error occurred');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 className="text-lg font-semibold text-white mb-4">Sell BTC Modal</h3>
-        
-        <div className="mb-4">
-          <label className="block text-gray-300 text-sm font-medium mb-2">
-            USD Amount
-          </label>
-          <input
-            type="number"
-            value={usdAmount}
-            onChange={(e) => setUsdAmount(e.target.value)}
-            placeholder="Enter USD amount"
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        
-        <div className="flex justify-end space-x-3">
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors disabled:opacity-50"
-          >
-            Close
-          </button>
-          <button
-            onClick={handleContinue}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? "Processing..." : "Continue"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface KrakenBalanceTests {
   connection: {
@@ -274,21 +92,11 @@ export default function Dashboard() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [demoMode, setDemoMode] = useState(false);
-  const [modeSwitching, setModeSwitching] = useState(false);
-  
-  // Sell BTC functionality
-  const [sellModalOpen, setSellModalOpen] = useState(false);
-  const [selling, setSelling] = useState(false);
-  const [sellResult, setSellResult] = useState<any>(null);
-  const [sellError, setSellError] = useState<string | null>(null);
-  const [showSellModal, setShowSellModal] = useState(false);
 
   const fetchDashboardState = async () => {
     try {
       setErrorMsg(null);
-      const endpoint = demoMode ? '/api/dashboard/state?demo=true' : '/api/dashboard/state';
-      const response = await fetch(endpoint, { cache: 'no-store' });
+      const response = await fetch('/api/dashboard/state', { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || data.success === false) {
         setErrorMsg(data.error || 'Failed to load dashboard state');
@@ -302,51 +110,6 @@ export default function Dashboard() {
       setState(null);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const toggleDemoMode = async () => {
-    setModeSwitching(true);
-    setDemoMode(!demoMode);
-    // Data will be refreshed by the useEffect
-    setTimeout(() => setModeSwitching(false), 1000);
-  };
-
-  const sellBTC = async (usdAmount: number) => {
-    setSelling(true);
-    setSellError(null);
-    setSellResult(null);
-
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-      const response = await fetch(`${backendUrl}/api/sell-btc`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ usdAmount }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sell BTC');
-      }
-
-      setSellResult(data);
-      
-      // Refresh portfolio data after successful sell
-      setTimeout(() => {
-        fetchDashboardState();
-      }, 1000);
-
-      return data;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
-      setSellError(errorMessage);
-      throw error;
-    } finally {
-      setSelling(false);
     }
   };
 
@@ -368,10 +131,6 @@ export default function Dashboard() {
     const balance =
       state?.kraken?.tests?.balance?.balance ?? ({} as Record<string, string>);
     return Object.entries(balance).filter(([asset]) => !asset.startsWith('_')); // Show only real assets in table
-  };
-
-  const handleSellBtcClick = () => {
-    setShowSellModal(true);
   };
 
   if (loading) {
@@ -442,22 +201,10 @@ export default function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold text-white">Charity Bot Overview</h1>
           <p className="text-gray-400 mt-2">
-            {demoMode ? 'Demo Mode' : 'Live Mode'} · Last updated:{' '}
-            {formatTimestamp(state.last_updated)}
+            Last updated: {formatTimestamp(state.last_updated)}
           </p>
         </div>
         <div className="flex space-x-2">
-          <button
-            onClick={toggleDemoMode}
-            disabled={modeSwitching}
-            className={`px-4 py-2 rounded-lg transition-colors font-medium ${
-              demoMode
-                ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-          >
-            {modeSwitching ? '⏳ Switching...' : demoMode ? '🔄 Switch to Live' : '🔄 Switch to Demo'}
-          </button>
           <button
             onClick={fetchDashboardState}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -576,16 +323,6 @@ export default function Dashboard() {
             </table>
           </div>
         )}
-        
-        {/* Sell BTC Button */}
-        <div className="mt-4 flex justify-end">
-          <button
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
-            onClick={() => handleSellBtcClick()}
-          >
-            Sell BTC
-          </button>
-        </div>
       </div>
 
       {/* Donation & safety status */}
@@ -626,15 +363,6 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
-
-      {/* Simple Sell BTC Modal */}
-      {showSellModal && (
-        <SimpleSellBTCModal
-          isOpen={showSellModal}
-          onClose={() => setShowSellModal(false)}
-          onSuccess={fetchDashboardState}
-        />
-      )}
     </div>
   );
 }

@@ -173,7 +173,6 @@ function SimpleChart({ data, width = 600, height = 200 }: SimpleChartProps) {
 export default function SentimentPage() {
   const [data, setData] = useState<SentimentData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(true);
 
   useEffect(() => {
     fetchSentimentData();
@@ -181,12 +180,12 @@ export default function SentimentPage() {
     // Set up auto-refresh
     const interval = setInterval(fetchSentimentData, 60000); // 1 minute for sentiment data
     return () => clearInterval(interval);
-  }, [demoMode]);
+  }, []);
 
   const fetchSentimentData = async () => {
     try {
       console.log('🔍 Frontend: Fetching sentiment data...');
-      const response = await fetch(`/api/dashboard/sentiment?demo=${demoMode}`);
+      const response = await fetch('/api/dashboard/sentiment');
       console.log(`📡 Frontend: Response status: ${response.status}`);
       
       if (!response.ok) {
@@ -300,16 +299,6 @@ export default function SentimentPage() {
           </p>
         </div>
         <div className="flex items-center space-x-4">
-          <button
-            onClick={() => setDemoMode(!demoMode)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              demoMode 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-600 hover:bg-gray-700 text-white'
-            }`}
-          >
-            {demoMode ? '🧪 Demo Mode ON' : '🔗 Live Mode'}
-          </button>
           <button
             onClick={fetchSentimentData}
             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
