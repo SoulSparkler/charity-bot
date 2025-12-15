@@ -31,17 +31,6 @@ async function startWorker() {
     }
     console.log('✅ Database connection verified');
 
-    // CRITICAL: Initialize database schema BEFORE any services that use DB
-    console.log('📦 Initializing database schema with safety checks...');
-    try {
-      await initializeDatabase();
-      console.log('[DB] ✅ Schema initialized - DATABASE SAFE FOR TRADING');
-    } catch (error) {
-      console.error('[DB] ❌ Database initialization failed - BLOCKING STARTUP');
-      console.error('[DB] 🚫 TRADING BLOCKED - Database schema incomplete or invalid');
-      throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-
     // CRITICAL: Database initialization with strict phase separation
     console.log('🔧 Initializing database with strict phase separation...');
     console.log('🚫 NO TRADING OPERATIONS UNTIL PHASE 3 VERIFICATION PASSES');
@@ -69,7 +58,7 @@ async function startWorker() {
       `);
       
       console.log('✅ Bot query test passed - All bot operations are safe');
-      console.log('✅ KRAKEN LIVE MODE ENABLED - All safety checks passed');
+      console.log('🛡️ KRAKEN LIVE MODE ENABLED - All safety checks passed');
     } catch (error) {
       console.error('❌ Bot query test failed - BLOCKING TRADING');
       console.error('🚫 KRAKEN LIVE MODE BLOCKED - Bot operations would fail');
@@ -174,7 +163,6 @@ async function startWorker() {
     console.log('📈 Market data: Every 2 minutes');
     console.log('📸 Snapshots: Daily/Weekly/Monthly at 00:00 UTC');
     console.log('🛡️  Database schema verified - SAFE FOR LIVE TRADING');
-    console.log('✅ Kraken LIVE MODE ENABLED - All safety checks passed');
     console.log('⏰ Worker is now monitoring and trading automatically');
 
   } catch (error) {

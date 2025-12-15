@@ -186,7 +186,9 @@ async function executePhase2AddColumns(): Promise<void> {
             bot_b_triggered BOOLEAN,
             last_reset TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE,
-            updated_at TIMESTAMP WITH TIME ZONE
+            updated_at TIMESTAMP WITH TIME ZONE,
+            monthly_start_balance NUMERIC(12, 2),
+            last_month_reset TIMESTAMP WITH TIME ZONE
           );
           RAISE NOTICE 'Created bot_state table structure';
         ELSE
@@ -320,6 +322,8 @@ async function executePhase4InitializeData(): Promise<void> {
         ALTER TABLE bot_state ALTER COLUMN last_reset SET DEFAULT NOW();
         ALTER TABLE bot_state ALTER COLUMN created_at SET DEFAULT NOW();
         ALTER TABLE bot_state ALTER COLUMN updated_at SET DEFAULT NOW();
+        ALTER TABLE bot_state ALTER COLUMN monthly_start_balance SET DEFAULT 0.00;
+        ALTER TABLE bot_state ALTER COLUMN last_month_reset SET DEFAULT NOW();
 
         RAISE NOTICE 'Added defaults only (NOT NULL constraints pending)';
       END
@@ -330,9 +334,10 @@ async function executePhase4InitializeData(): Promise<void> {
     await query(`
       INSERT INTO bot_state (
         bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
-        bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+        bot_a_cycle_target, bot_b_enabled, bot_b_triggered,
+        monthly_start_balance, last_month_reset
       )
-      SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
+      SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE, 0.00, NOW()
       WHERE NOT EXISTS (SELECT 1 FROM bot_state);
     `);
 
@@ -348,7 +353,9 @@ async function executePhase4InitializeData(): Promise<void> {
         bot_b_triggered = COALESCE(bot_b_triggered, FALSE),
         last_reset = COALESCE(last_reset, NOW()),
         created_at = COALESCE(created_at, NOW()),
-        updated_at = COALESCE(updated_at, NOW())
+        updated_at = COALESCE(updated_at, NOW()),
+        monthly_start_balance = COALESCE(monthly_start_balance, 0.00),
+        last_month_reset = COALESCE(last_month_reset, NOW())
       WHERE bot_a_virtual_usd IS NULL 
          OR bot_b_virtual_usd IS NULL 
          OR bot_a_cycle_number IS NULL 
@@ -357,7 +364,9 @@ async function executePhase4InitializeData(): Promise<void> {
          OR bot_b_triggered IS NULL 
          OR last_reset IS NULL 
          OR created_at IS NULL 
-         OR updated_at IS NULL;
+         OR updated_at IS NULL
+         OR monthly_start_balance IS NULL 
+         OR last_month_reset IS NULL;
     `);
 
     // Step 6: Only NOW set NOT NULL constraints (after backfilling NULLs)
@@ -375,6 +384,8 @@ async function executePhase4InitializeData(): Promise<void> {
         ALTER TABLE bot_state ALTER COLUMN last_reset SET NOT NULL;
         ALTER TABLE bot_state ALTER COLUMN created_at SET NOT NULL;
         ALTER TABLE bot_state ALTER COLUMN updated_at SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN monthly_start_balance SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN last_month_reset SET NOT NULL;
 
         RAISE NOTICE 'NOT NULL constraints applied after backfilling';
       END

@@ -88,6 +88,20 @@ export const BOT_STATE_REQUIRED_COLUMNS: BotStateColumn[] = [
     nullable: false,
     default: 'NOW()',
     description: 'Record last update timestamp'
+  },
+  {
+    name: 'monthly_start_balance',
+    type: 'NUMERIC(12, 2)',
+    nullable: false,
+    default: 0.00,
+    description: 'Bot B monthly starting balance for donation calculation'
+  },
+  {
+    name: 'last_month_reset',
+    type: 'TIMESTAMP WITH TIME ZONE',
+    nullable: false,
+    default: 'NOW()',
+    description: 'Last time Bot B monthly cycle was reset'
   }
 ];
 
