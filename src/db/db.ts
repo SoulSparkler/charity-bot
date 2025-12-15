@@ -103,8 +103,11 @@ export async function withTransaction<T>(
 }
 
 /**
- * Comprehensive database initialization using canonical schema
- * This function ensures ALL required columns exist before any bot operations
+ * STRICT PHASE database initialization using canonical schema
+ *
+ * CRITICAL: This function is split into strict phases to prevent
+ * execution-order bugs where INSERT/UPDATE operations reference
+ * columns before they are guaranteed to exist.
  */
 export async function initializeDatabase(): Promise<void> {
   // Check if we should use mock database mode
@@ -118,109 +121,119 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   try {
-    console.log("[DB] Starting comprehensive database initialization...");
+    console.log("[DB] Starting STRICT PHASE database initialization...");
+    console.log("[DB] 🚫 NO INSERT/UPDATE OPERATIONS UNTIL PHASE 3 COMPLETES");
 
-    // Step 1: Apply base schema
-    const schemaPath = path.join(__dirname, "schema.sql");
-    const schema = fs.readFileSync(schemaPath, "utf8");
-    await query(schema);
-    console.log("[DB] Base PostgreSQL schema applied");
+    // PHASE 1: Apply base schema (CREATE TABLE only, no data operations)
+    await executePhase1CreateSchema();
+    
+    // PHASE 2: Add ALL canonical columns with existence checks
+    await executePhase2AddColumns();
+    
+    // PHASE 3: Verify ALL required columns exist (CRITICAL BARRIER)
+    await executePhase3VerifySchema();
+    
+    // PHASE 4: ONLY NOW can we insert initial data (safe because schema is verified)
+    await executePhase4InitializeData();
 
-    // Step 2: Comprehensive bot_state column migration using canonical schema
-    console.log("[DB] Applying comprehensive bot_state column migrations...");
-    await applyComprehensiveBotStateMigration();
-
-    // Step 3: Verify canonical schema completeness
-    console.log("[DB] Verifying canonical schema completeness...");
-    await verifyCanonicalSchema();
-
-    console.log("[DB] ✅ Database initialization completed successfully - CANONICAL SCHEMA VERIFIED");
+    console.log("[DB] ✅ STRICT PHASE initialization completed successfully");
+    console.log("[DB] 🛡️ SCHEMA VERIFIED - SAFE TO START TRADING");
   } catch (error) {
-    console.error("[DB] ❌ Failed to initialize database:", error);
-    console.error("[DB] 🚫 BLOCKING TRADING - Database schema incomplete");
+    console.error("[DB] ❌ STRICT PHASE initialization failed:", error);
+    console.error("[DB] 🚫 BLOCKING TRADING - Schema initialization incomplete");
     throw error;
   }
 }
 
 /**
- * Apply comprehensive bot_state migration covering ALL canonical columns
+ * PHASE 1: Create base schema (CREATE TABLE only, NO data operations)
  */
-async function applyComprehensiveBotStateMigration(): Promise<void> {
-  const migrationSQL = `
-    DO $$
-    DECLARE
-      column_record RECORD;
-      missing_columns TEXT[] := ARRAY[]::TEXT[];
-    BEGIN
-      RAISE NOTICE 'Starting comprehensive bot_state migration...';
-      
-      -- Create table if it doesn't exist with canonical schema
-      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_state') THEN
-        RAISE NOTICE 'Creating bot_state table with canonical schema...';
-        CREATE TABLE bot_state (
-          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-          bot_a_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 230.00,
-          bot_b_virtual_usd NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-          bot_a_cycle_number INTEGER NOT NULL DEFAULT 1,
-          bot_a_cycle_target NUMERIC(12, 2) NOT NULL DEFAULT 200.00,
-          bot_b_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-          bot_b_triggered BOOLEAN NOT NULL DEFAULT FALSE,
-          last_reset TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        RAISE NOTICE 'Created bot_state table with canonical schema';
-      END IF;
-
-      -- Migrate each canonical column
-      ${BOT_STATE_REQUIRED_COLUMNS.map(col => `
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name = 'bot_state'
-          AND column_name = '${col.name}'
-        ) THEN
-          ALTER TABLE bot_state ADD COLUMN ${col.name} ${col.type} NOT NULL DEFAULT ${col.default};
-          RAISE NOTICE 'Added column: ${col.name}';
-          missing_columns := array_append(missing_columns, '${col.name}');
-        ELSE
-          RAISE NOTICE 'Column already exists: ${col.name}';
-        END IF;
-      `).join('\n      ')}
-
-      -- Ensure at least one row exists
-      IF NOT EXISTS (SELECT 1 FROM bot_state) THEN
-        INSERT INTO bot_state (
-          bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
-          bot_a_cycle_target, bot_b_enabled, bot_b_triggered
-        ) VALUES (230.00, 0.00, 1, 200.00, FALSE, FALSE);
-        RAISE NOTICE 'Inserted initial bot_state row';
-      END IF;
-
-      -- Report migration results
-      IF array_length(missing_columns, 1) > 0 THEN
-        RAISE NOTICE 'Migration completed. Added columns: %', array_to_string(missing_columns, ', ');
-      ELSE
-        RAISE NOTICE 'Migration completed. All canonical columns already existed.';
-      END IF;
-    END
-    $$;
-  `;
-
+async function executePhase1CreateSchema(): Promise<void> {
+  console.log("[DB] 📋 PHASE 1: Creating base schema...");
+  
   try {
-    await query(migrationSQL);
-    console.log("[DB] ✅ Comprehensive bot_state migration completed");
+    const schemaPath = path.join(__dirname, "schema.sql");
+    const schema = fs.readFileSync(schemaPath, "utf8");
+    await query(schema);
+    console.log("[DB] ✅ PHASE 1 COMPLETE: Base schema applied");
   } catch (error) {
-    console.error("[DB] ❌ Comprehensive bot_state migration failed:", error);
-    throw new Error(`Bot state migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error("[DB] ❌ PHASE 1 FAILED: Base schema creation failed:", error);
+    throw error;
   }
 }
 
 /**
- * Verify that ALL canonical columns exist and are accessible
+ * PHASE 2: Add ALL canonical columns with existence checks
+ * CRITICAL: NO INSERT/UPDATE operations in this phase
  */
-async function verifyCanonicalSchema(): Promise<void> {
+async function executePhase2AddColumns(): Promise<void> {
+  console.log("[DB] 🔧 PHASE 2: Adding canonical columns...");
+  
   try {
-    // Get all existing columns in bot_state table
+    // Create table if missing (without any data operations)
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_state') THEN
+          RAISE NOTICE 'Creating bot_state table structure...';
+          CREATE TABLE bot_state (
+            id UUID PRIMARY KEY,
+            bot_a_virtual_usd NUMERIC(12, 2),
+            bot_b_virtual_usd NUMERIC(12, 2),
+            bot_a_cycle_number INTEGER,
+            bot_a_cycle_target NUMERIC(12, 2),
+            bot_b_enabled BOOLEAN,
+            bot_b_triggered BOOLEAN,
+            last_reset TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE,
+            updated_at TIMESTAMP WITH TIME ZONE
+          );
+          RAISE NOTICE 'Created bot_state table structure';
+        ELSE
+          RAISE NOTICE 'bot_state table already exists';
+        END IF;
+      END
+      $$;
+    `);
+
+    // Add each canonical column if missing (without defaults to avoid conflicts)
+    for (const column of BOT_STATE_REQUIRED_COLUMNS) {
+      if (column.name !== 'id') { // Skip id as it's primary key
+        await query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'bot_state'
+              AND column_name = '${column.name}'
+            ) THEN
+              ALTER TABLE bot_state ADD COLUMN ${column.name} ${column.type};
+              RAISE NOTICE 'Added column: ${column.name}';
+            ELSE
+              RAISE NOTICE 'Column already exists: ${column.name}';
+            END IF;
+          END
+          $$;
+        `);
+      }
+    }
+
+    console.log("[DB] ✅ PHASE 2 COMPLETE: All canonical columns added");
+  } catch (error) {
+    console.error("[DB] ❌ PHASE 2 FAILED: Column addition failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * PHASE 3: Verify ALL required columns exist (CRITICAL BARRIER)
+ * NO FURTHER OPERATIONS ALLOWED UNTIL THIS PASSES
+ */
+async function executePhase3VerifySchema(): Promise<void> {
+  console.log("[DB] 🔍 PHASE 3: Verifying canonical schema...");
+  
+  try {
+    // Get all existing columns
     const existingColumnsResult = await query(`
       SELECT column_name
       FROM information_schema.columns
@@ -235,28 +248,80 @@ async function verifyCanonicalSchema(): Promise<void> {
     
     if (!validation.isValid) {
       const missingColumns = validation.missingColumns.join(', ');
-      throw new Error(`Canonical schema validation failed. Missing columns: ${missingColumns}`);
+      throw new Error(`CRITICAL: Canonical schema validation failed. Missing columns: ${missingColumns}`);
     }
 
-    console.log(`[DB] ✅ Canonical schema verification passed: ${existingColumns.length}/${BOT_STATE_COLUMN_NAMES.length} columns present`);
+    console.log(`[DB] ✅ PHASE 3 VERIFIED: ${existingColumns.length}/${BOT_STATE_COLUMN_NAMES.length} canonical columns present`);
 
-    // Test accessibility of critical columns
-    const criticalColumns = ['bot_a_virtual_usd', 'bot_b_virtual_usd', 'bot_b_enabled', 'bot_b_triggered'];
-    const accessibilityTest = criticalColumns.every(col => existingColumns.includes(col));
+    // Test accessibility with real bot query
+    await query(`
+      SELECT bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+      FROM bot_state
+      LIMIT 1
+    `);
     
-    if (!accessibilityTest) {
-      throw new Error(`Critical column accessibility test failed. Expected: ${criticalColumns.join(', ')}, Found: ${existingColumns.filter(col => criticalColumns.includes(col)).join(', ')}`);
-    }
-
-    console.log("[DB] ✅ Critical column accessibility test passed");
-    
-    // Test a real query that bots will use
-    await query("SELECT bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered FROM bot_state LIMIT 1");
-    console.log("[DB] ✅ Bot query test passed - schema ready for trading");
-
+    console.log("[DB] ✅ PHASE 3 COMPLETE: Schema verification passed - TRADING NOW SAFE");
   } catch (error) {
-    console.error("[DB] ❌ Canonical schema verification failed:", error);
-    throw new Error(`Schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error("[DB] ❌ PHASE 3 FAILED: Schema verification failed:", error);
+    console.error("[DB] 🚫 BLOCKING ALL OPERATIONS - Schema incomplete");
+    throw error;
+  }
+}
+
+/**
+ * PHASE 4: Initialize data (ONLY after schema verification passes)
+ */
+async function executePhase4InitializeData(): Promise<void> {
+  console.log("[DB] 📊 PHASE 4: Initializing data...");
+  
+  try {
+    // Add defaults and constraints NOW that schema is verified
+    await query(`
+      DO $$
+      BEGIN
+        -- Add defaults and constraints
+        ALTER TABLE bot_state ALTER COLUMN id SET DEFAULT uuid_generate_v4();
+        ALTER TABLE bot_state ALTER COLUMN bot_a_virtual_usd SET DEFAULT 230.00;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_virtual_usd SET DEFAULT 0.00;
+        ALTER TABLE bot_state ALTER COLUMN bot_a_cycle_number SET DEFAULT 1;
+        ALTER TABLE bot_state ALTER COLUMN bot_a_cycle_target SET DEFAULT 200.00;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_enabled SET DEFAULT FALSE;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_triggered SET DEFAULT FALSE;
+        ALTER TABLE bot_state ALTER COLUMN last_reset SET DEFAULT NOW();
+        ALTER TABLE bot_state ALTER COLUMN created_at SET DEFAULT NOW();
+        ALTER TABLE bot_state ALTER COLUMN updated_at SET DEFAULT NOW();
+
+        -- Set NOT NULL constraints
+        ALTER TABLE bot_state ALTER COLUMN id SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_a_virtual_usd SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_virtual_usd SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_a_cycle_number SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_a_cycle_target SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_enabled SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN bot_b_triggered SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN last_reset SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN created_at SET NOT NULL;
+        ALTER TABLE bot_state ALTER COLUMN updated_at SET NOT NULL;
+
+        RAISE NOTICE 'Added defaults and constraints';
+      END
+      $$;
+    `);
+
+    // Insert initial data ONLY NOW that schema is fully verified
+    await query(`
+      INSERT INTO bot_state (
+        bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number,
+        bot_a_cycle_target, bot_b_enabled, bot_b_triggered
+      )
+      SELECT 230.00, 0.00, 1, 200.00, FALSE, FALSE
+      WHERE NOT EXISTS (SELECT 1 FROM bot_state);
+    `);
+
+    console.log("[DB] ✅ PHASE 4 COMPLETE: Data initialization completed");
+  } catch (error) {
+    console.error("[DB] ❌ PHASE 4 FAILED: Data initialization failed:", error);
+    throw error;
   }
 }
 

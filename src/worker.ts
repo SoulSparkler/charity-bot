@@ -42,39 +42,38 @@ async function startWorker() {
       throw new Error(`Database initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // CRITICAL: Verify canonical database schema before allowing any bot operations
-    console.log('🔍 Verifying canonical database schema...');
+    // CRITICAL: Database initialization with strict phase separation
+    console.log('🔧 Initializing database with strict phase separation...');
+    console.log('🚫 NO TRADING OPERATIONS UNTIL PHASE 3 VERIFICATION PASSES');
+    try {
+      await initializeDatabase();
+      console.log('✅ Database initialization completed - PHASES 1-4 SUCCESSFUL');
+      console.log('🛡️ SCHEMA VERIFIED - TRADING NOW SAFE');
+    } catch (error) {
+      console.error('❌ Database initialization failed - BLOCKING STARTUP');
+      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Schema initialization failed');
+      console.error('💥 REASON:', error instanceof Error ? error.message : 'Unknown error');
+      throw error;
+    }
+
+    // CRITICAL: Additional verification that schema is ready for bot operations
+    console.log('🔍 Final verification: Testing bot query compatibility...');
     try {
       const { query } = await import('./db/db');
-      const { BOT_STATE_COLUMN_NAMES } = await import('./db/schema-constants');
       
-      // Verify all canonical columns exist
-      const verificationResult = await query(`
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = 'bot_state'
-        ORDER BY column_name
-      `);
-
-      const existingColumns = verificationResult.rows.map((row: any) => row.column_name);
-      const missingColumns = BOT_STATE_COLUMN_NAMES.filter(col => !existingColumns.includes(col));
-      
-      if (missingColumns.length > 0) {
-        throw new Error(`Missing canonical columns: ${missingColumns.join(', ')}`);
-      }
-
-      // Test critical bot query
-      await query(`
+      // Test the exact query that bots will use
+      const botTestResult = await query(`
         SELECT bot_a_virtual_usd, bot_b_virtual_usd, bot_a_cycle_number, bot_a_cycle_target, bot_b_enabled, bot_b_triggered
         FROM bot_state
         LIMIT 1
       `);
       
-      console.log('✅ Canonical database schema verification passed - ALL REQUIRED COLUMNS PRESENT');
+      console.log('✅ Bot query test passed - All bot operations are safe');
+      console.log('✅ KRAKEN LIVE MODE ENABLED - All safety checks passed');
     } catch (error) {
-      console.error('❌ Canonical database verification failed - BLOCKING TRADING');
-      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Canonical schema verification failed');
-      throw new Error(`Canonical schema verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ Bot query test failed - BLOCKING TRADING');
+      console.error('🚫 KRAKEN LIVE MODE BLOCKED - Bot operations would fail');
+      throw new Error(`Bot query test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     // Ensure start snapshot exists (for P/L calculations)
